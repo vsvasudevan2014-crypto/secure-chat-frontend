@@ -1,12 +1,10 @@
-
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import {
-  FaPhone,
-  FaVideo,
-  FaEllipsisV,
-  FaUserCircle,
   FaArrowLeft,
   FaSearch,
+  FaTimes,
+  FaTrash,
+  FaUserMinus,
 } from "react-icons/fa";
 
 function ChatHeader({
@@ -16,171 +14,198 @@ function ChatHeader({
   onBack,
   messageSearch,
   onMessageSearchChange,
-  searchResults,
+  searchResults = [],
   onSearchResultClick,
 }) {
-  const [showMenu, setShowMenu] = useState(false);
-  const menuRef = useRef(null);
+  const [showSearch, setShowSearch] =
+    useState(false);
 
-  useEffect(() => {
-    const handleOutsideClick = (event) => {
-      if (
-        showMenu &&
-        menuRef.current &&
-        !menuRef.current.contains(event.target)
-      ) {
-        setShowMenu(false);
-      }
-    };
+  const closeSearch = () => {
+    setShowSearch(false);
+    onMessageSearchChange("");
+  };
 
-    document.addEventListener("mousedown", handleOutsideClick);
-
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-    };
-  }, [showMenu]);
+  const handleSearchResultClick = (
+    messageId
+  ) => {
+    onSearchResultClick(messageId);
+    closeSearch();
+  };
 
   return (
-    <div className="relative flex items-center justify-between border-b border-slate-800 bg-slate-900 p-4">
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-slate-400 transition hover:text-white"
-        >
-          <FaArrowLeft />
-        </button>
+    <header className="relative z-30 shrink-0 border-b border-slate-700 bg-slate-900">
+      <div className="flex min-h-[64px] items-center justify-between gap-2 px-2 py-2 sm:px-4">
+        {/* Friend information */}
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-white md:hidden"
+            aria-label="Back to friends"
+            title="Back to friends"
+          >
+            <FaArrowLeft />
+          </button>
 
-        <FaUserCircle size={42} className="text-slate-400" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-500 font-bold text-white">
+            {selectedUser
+              ?.charAt(0)
+              .toUpperCase()}
+          </div>
 
-        <div>
-          <h2 className="text-lg font-semibold">{selectedUser}</h2>
-          <p className="text-xs text-slate-400">
-            Secure conversation
-          </p>
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-semibold text-white sm:text-lg">
+              {selectedUser}
+            </h2>
+
+            <p className="text-xs text-green-400">
+              Secure conversation
+            </p>
+          </div>
+        </div>
+
+        {/* Header actions */}
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              setShowSearch(
+                (previousValue) =>
+                  !previousValue
+              )
+            }
+            className={`flex h-10 w-10 items-center justify-center rounded-full transition ${
+              showSearch
+                ? "bg-blue-500 text-white"
+                : "text-slate-300 hover:bg-slate-800 hover:text-white"
+            }`}
+            aria-label="Search messages"
+            title="Search messages"
+          >
+            {showSearch ? (
+              <FaTimes />
+            ) : (
+              <FaSearch />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={onClearChat}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-red-400"
+            aria-label="Clear chat"
+            title="Clear chat"
+          >
+            <FaTrash />
+          </button>
+
+          <button
+            type="button"
+            onClick={onRemoveFriend}
+            className="flex h-10 w-10 items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-800 hover:text-red-400"
+            aria-label="Remove friend"
+            title="Remove friend"
+          >
+            <FaUserMinus />
+          </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-6 text-gray-400">
-        <FaPhone className="cursor-pointer transition hover:text-green-400" />
+      {/* Message search section */}
+      {showSearch && (
+        <div className="border-t border-slate-800 bg-slate-950 px-3 py-3 sm:px-4">
+          <div className="relative">
+            <FaSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400" />
 
-        <FaVideo className="cursor-pointer transition hover:text-green-400" />
+            <input
+              type="text"
+              value={messageSearch}
+              onChange={(event) =>
+                onMessageSearchChange(
+                  event.target.value
+                )
+              }
+              placeholder="Search messages..."
+              autoFocus
+              className="w-full rounded-xl bg-slate-800 py-2.5 pl-10 pr-10 text-sm text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500"
+            />
 
-        <div ref={menuRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setShowMenu((previous) => !previous)}
-            className="transition hover:text-green-400"
-          >
-            <FaEllipsisV />
-          </button>
+            {messageSearch && (
+              <button
+                type="button"
+                onClick={() =>
+                  onMessageSearchChange("")
+                }
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-white"
+                aria-label="Clear message search"
+              >
+                <FaTimes />
+              </button>
+            )}
+          </div>
 
-          {showMenu && (
-            <div className="absolute right-0 top-9 z-50 w-80 overflow-hidden rounded-xl border border-slate-700 bg-slate-800 shadow-2xl">
-              <div className="border-b border-slate-700 p-3">
-                <div className="flex items-center gap-2 rounded-lg bg-slate-900 px-3">
-                  <FaSearch className="text-slate-500" />
+          {messageSearch.trim() && (
+            <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-xl">
+              {searchResults.length ===
+              0 ? (
+                <p className="px-4 py-4 text-center text-sm text-slate-400">
+                  No matching messages
+                  found
+                </p>
+              ) : (
+                searchResults.map(
+                  (message, index) => (
+                    <button
+                      type="button"
+                      key={
+                        message.id ||
+                        message.messageId ||
+                        index
+                      }
+                      onClick={() =>
+                        handleSearchResultClick(
+                          message.id ||
+                            message.messageId
+                        )
+                      }
+                      className="block w-full border-b border-slate-800 px-4 py-3 text-left transition last:border-b-0 hover:bg-slate-800"
+                    >
+                      <p className="truncate text-sm text-white">
+                        {message.decryptedText ||
+                          "Message"}
+                      </p>
 
-                  <input
-                    type="text"
-                    value={messageSearch}
-                    onChange={(event) =>
-                      onMessageSearchChange(event.target.value)
-                    }
-                    placeholder="Search messages..."
-                    className="w-full bg-transparent py-2 text-sm text-white placeholder-slate-500 outline-none"
-                  />
-                </div>
-              </div>
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        {message.sender ===
+                        "me"
+                          ? "You"
+                          : selectedUser}
 
-              {messageSearch.trim() && (
-                <div className="max-h-72 overflow-y-auto">
-                  {searchResults.length === 0 ? (
-                    <p className="p-4 text-center text-sm text-slate-400">
-                      No matching messages found
-                    </p>
-                  ) : (
-                    searchResults.map((result) => (
-                      <button
-                        type="button"
-                        key={result.id}
-                        onClick={() => {
-                          onSearchResultClick(result.id);
-                          setShowMenu(false);
-                        }}
-                        className="w-full border-b border-slate-700 px-4 py-3 text-left hover:bg-slate-700"
-                      >
-                        <p className="truncate text-sm text-white">
-                          {result.decryptedText}
-                        </p>
-
-                        <div className="mt-1 flex items-center justify-between text-xs text-slate-400">
-                          <span>
-                            {result.sender === "me"
-                              ? "You"
-                              : selectedUser}
-                          </span>
-
-                          <span>
-                            {result.createdAt
-                              ? new Date(
-                                  result.createdAt
-                                ).toLocaleString([], {
-                                  day: "2-digit",
-                                  month: "short",
-                                  year: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
-                              : ""}
-                          </span>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
+                        {message.createdAt
+                          ? ` • ${new Date(
+                              message.createdAt
+                            ).toLocaleString(
+                              [],
+                              {
+                                day: "2-digit",
+                                month: "short",
+                                hour: "2-digit",
+                                minute:
+                                  "2-digit",
+                              }
+                            )}`
+                          : ""}
+                      </p>
+                    </button>
+                  )
+                )
               )}
-
-              <div className="p-2">
-                {messageSearch && (
-                  <button
-                    type="button"
-                    onClick={() => onMessageSearchChange("")}
-                    className="w-full rounded-lg px-3 py-2 text-left text-sm text-yellow-400 hover:bg-slate-700"
-                  >
-                    Clear Search
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMenu(false);
-                    onClearChat();
-                  }}
-                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-700"
-                >
-                  Clear Chat
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMenu(false);
-                    onRemoveFriend();
-                  }}
-                  className="w-full rounded-lg px-3 py-2 text-left text-sm text-red-400 hover:bg-slate-700"
-                >
-                  Remove Friend
-                </button>
-              </div>
             </div>
           )}
         </div>
-      </div>
-    </div>
+      )}
+    </header>
   );
 }
 
 export default ChatHeader;
-

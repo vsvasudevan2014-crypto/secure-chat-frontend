@@ -1280,7 +1280,11 @@ function Chat() {
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <aside className="flex w-72 shrink-0 flex-col border-r border-slate-700 bg-slate-900">
+        <aside
+  className={`${
+    selectedUser ? "hidden md:flex" : "flex"
+  } w-full shrink-0 flex-col border-r border-slate-700 bg-slate-900 md:w-72`}
+>
           <div className="shrink-0 border-b border-slate-800 bg-slate-950 p-4">
             <div className="mb-3 flex items-center gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-500 text-lg font-bold">
@@ -1441,8 +1445,11 @@ function Chat() {
           </div>
         </aside>
 
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {!selectedUser ? (
+<main
+  className={`${
+    selectedUser ? "flex" : "hidden md:flex"
+  } min-h-0 min-w-0 flex-1 flex-col overflow-hidden`}
+>          {!selectedUser ? (
             <div className="flex flex-1 items-center justify-center bg-gradient-to-b from-slate-950 to-slate-900">
               <div className="px-6 text-center">
                 <div className="mb-4 text-6xl">Secure</div>
@@ -1499,8 +1506,7 @@ function Chat() {
               )}
 
               <div
-                className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-slate-950 to-slate-900 p-6"
-                onClick={() => {
+className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-slate-950 to-slate-900 p-3 sm:p-6"                onClick={() => {
                   if (!selectionMode) {
                     setSelectedMessageId(null);
                   }
@@ -1567,7 +1573,7 @@ function Chat() {
                           className="group relative cursor-pointer"
                         >
                           <div
-                            className={`max-w-xs break-words rounded-2xl px-4 py-3 shadow-lg sm:max-w-md ${
+                            className={`max-w-[85vw] break-words sm:max-w-md rounded-2xl px-4 py-3 shadow-lg sm:max-w-md ${
                               message.sender === "me"
                                 ? "rounded-br-none bg-green-500"
                                 : "rounded-bl-none bg-slate-700"
@@ -1777,8 +1783,7 @@ function Chat() {
                 </div>
               )}
 
-              <div className="flex shrink-0 gap-3 border-t border-slate-800 bg-slate-900 p-4">
-                <input
+<div className="flex shrink-0 gap-2 border-t border-slate-800 bg-slate-900 p-2 sm:gap-3 sm:p-4">                <input
                   ref={fileInputRef}
                   type="file"
                   accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.txt,.docx,.xlsx,.pptx"
@@ -1820,8 +1825,7 @@ function Chat() {
                   type="button"
                   onClick={sendMessage}
                   disabled={!input.trim() || selectionMode}
-                  className="rounded-xl bg-green-500 px-6 py-3 font-medium transition hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
+className="rounded-xl bg-green-500 px-4 py-3 font-medium transition hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50 sm:px-6"                >
                   Send
                 </button>
               </div>

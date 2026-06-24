@@ -1,6 +1,10 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import API from "../services/api";
+import {
+  FaEye,
+  FaEyeSlash,
+} from "react-icons/fa";
 
 function Register() {
   const navigate = useNavigate();
@@ -8,6 +12,16 @@ function Register() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [
+  showPassword,
+  setShowPassword,
+] = useState(false);
+const [confirmPassword, setConfirmPassword] = useState("");
+
+const [
+  showConfirmPassword,
+  setShowConfirmPassword,
+] = useState(false);
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -55,13 +69,87 @@ function Register() {
           onChange={(e) => setEmail(e.target.value)}
         />
 
-        <input
-          type="password"
-          placeholder="Password"
-          className="w-full mb-4 p-3 rounded-xl bg-slate-800 text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-green-500"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        <div className="relative">
+  <input
+    type={
+      showPassword
+        ? "text"
+        : "password"
+    }
+    value={password}
+    onChange={(event) =>
+      setPassword(
+        event.target.value
+      )
+    }
+    placeholder="Password"
+    autoComplete="new-password"
+    className="w-full rounded-lg bg-slate-800 px-4 py-3 pr-12 text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-green-500"
+  />
+
+  <button
+    type="button"
+    onClick={() =>
+      setShowPassword(
+        (previousValue) =>
+          !previousValue
+      )
+    }
+    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+    aria-label={
+      showPassword
+        ? "Hide password"
+        : "Show password"
+    }
+  >
+    {showPassword ? (
+      <FaEyeSlash />
+    ) : (
+      <FaEye />
+    )}
+  </button>
+</div>
+
+<div className="relative">
+  <input
+    type={
+      showConfirmPassword
+        ? "text"
+        : "password"
+    }
+    value={confirmPassword}
+    onChange={(event) =>
+      setConfirmPassword(
+        event.target.value
+      )
+    }
+    placeholder="Confirm password"
+    autoComplete="new-password"
+    className="w-full rounded-lg bg-slate-800 px-4 py-3 pr-12 text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-green-500"
+  />
+
+  <button
+    type="button"
+    onClick={() =>
+      setShowConfirmPassword(
+        (previousValue) =>
+          !previousValue
+      )
+    }
+    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+    aria-label={
+      showConfirmPassword
+        ? "Hide confirm password"
+        : "Show confirm password"
+    }
+  >
+    {showConfirmPassword ? (
+      <FaEyeSlash />
+    ) : (
+      <FaEye />
+    )}
+  </button>
+</div>
 
         <button
           type="submit"
