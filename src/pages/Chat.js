@@ -1,20 +1,23 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { App as CapacitorApp } from "@capacitor/app";
-import {
-  FaArrowDown,
-  FaPaperclip,
-  FaReply,
-  FaShare,
-  FaTimes,
-  FaTrash,
-} from "react-icons/fa";
 
+import EmojiPicker from "emoji-picker-react";
 import {
   decryptMessage,
   encryptMessage,
   generateChatKey,
 } from "../utils/crypto";
+
+import {
+  FaArrowDown,
+  FaPaperclip,
+  FaReply,
+  FaShare,
+  FaSmile,
+  FaTimes,
+  FaTrash,
+} from "react-icons/fa";
 
 import socket from "../services/socket";
 import API from "../services/api";
@@ -38,7 +41,7 @@ function Chat() {
   const longPressTimerRef = useRef(null);
   const touchStartRef = useRef(null);
   const suppressMessageClickRef = useRef(false);
-
+const emojiPickerRef = useRef(null);
   const loggedInUsername =
     sessionStorage.getItem("username");
 
@@ -100,6 +103,9 @@ function Chat() {
     showForwardModal,
     setShowForwardModal,
   ] = useState(false);
+
+  const [showEmojiPicker, setShowEmojiPicker] =
+  useState(false);
 
   const [
     forwardRecipientIds,
@@ -615,6 +621,31 @@ function Chat() {
     };
   }, []);
 
+  useEffect(() => {
+  const handleOutsideClick = (event) => {
+    if (
+      emojiPickerRef.current &&
+      !emojiPickerRef.current.contains(
+        event.target,
+      )
+    ) {
+      setShowEmojiPicker(false);
+    }
+  };
+
+  document.addEventListener(
+    "mousedown",
+    handleOutsideClick,
+  );
+
+  return () => {
+    document.removeEventListener(
+      "mousedown",
+      handleOutsideClick,
+    );
+  };
+}, []);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({
       behavior: "smooth",
@@ -1099,6 +1130,8 @@ const fetchUnreadCounts = async () => {
     }
 
     setInput("");
+    setShowEmojiPicker(false);
+    setShowEmojiPicker(false);
     setReplyingTo(null);
     setSelectedMessageId(null);
   };
@@ -1507,6 +1540,7 @@ const fetchUnreadCounts = async () => {
     setInput("");
     setSelectedMessageId(null);
     setReplyingTo(null);
+    setShowEmojiPicker(false);
     setTypingUser(null);
     setMessageSearch("");
     setHighlightedMessageId(null);
@@ -1531,6 +1565,7 @@ const fetchUnreadCounts = async () => {
     setSelectedMessageId(null);
     setTypingUser(null);
     setIsUploading(false);
+    setShowEmojiPicker(false);
     setUploadProgress(0);
     resetForwardSelection();
 
@@ -2262,6 +2297,12 @@ const fetchUnreadCounts = async () => {
       block: "end",
     });
   };
+
+  const handleEmojiClick = (emojiData) => {
+  setInput((previousInput) =>
+    `${previousInput}${emojiData.emoji}`,
+  );
+};
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-slate-950 text-white">
@@ -3037,69 +3078,101 @@ const fetchUnreadCounts = async () => {
                 </div>
               )}
 
-              <div className="flex shrink-0 gap-3 border-t border-slate-800 bg-slate-900 p-4">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
-                  onChange={
-                    handleAttachmentSelect
-                  }
-                  className="hidden"
-                />
+              <div className="relative flex shrink-0 gap-3 border-t border-slate-800 bg-slate-900 p-4">
+  <input
+    ref={fileInputRef}
+    type="file"
+    accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+    onChange={handleAttachmentSelect}
+    className="hidden"
+  />
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    fileInputRef.current?.click()
-                  }
-                  disabled={
-                    selectionMode ||
-                    isUploading
-                  }
-                  className="rounded-xl bg-slate-800 px-4 py-3 text-slate-200 transition hover:bg-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Attach image or file"
-                >
-                  <FaPaperclip />
-                </button>
+  <button
+    type="button"
+    onClick={() =>
+      fileInputRef.current?.click()
+    }
+    disabled={
+      selectionMode || isUploading
+    }
+    className="rounded-xl bg-slate-800 px-4 py-3 text-slate-200 transition hover:bg-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+    title="Attach image or file"
+  >
+    <FaPaperclip />
+  </button>
 
-                <input
-                  type="text"
-                  value={input}
-                  onChange={handleTyping}
-                  disabled={selectionMode}
-                  onFocus={() =>
-                    setSelectedMessageId(null)
-                  }
-                  onKeyDown={(event) => {
-                    if (
-                      event.key === "Enter" &&
-                      !event.shiftKey
-                    ) {
-                      event.preventDefault();
-                      sendMessage();
-                    }
-                  }}
-                  placeholder={
-                    selectionMode
-                      ? "Finish forwarding selection first"
-                      : `Message ${selectedUser.username}...`
-                  }
-                  className="min-w-0 flex-1 rounded-xl bg-slate-800 px-4 py-3 text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-green-500 disabled:cursor-not-allowed disabled:opacity-50"
-                />
+  <div
+    ref={emojiPickerRef}
+    className="relative hidden md:block"
+  >
+    <button
+      type="button"
+      onClick={() =>
+        setShowEmojiPicker(
+          (previousValue) =>
+            !previousValue,
+        )
+      }
+      disabled={selectionMode}
+      className="rounded-xl bg-slate-800 px-4 py-3 text-xl text-slate-200 transition hover:bg-slate-700 hover:text-yellow-400 disabled:cursor-not-allowed disabled:opacity-50"
+      title="Choose emoji"
+    >
+      <FaSmile />
+    </button>
 
-                <button
-                  type="button"
-                  onClick={sendMessage}
-                  disabled={
-                    !input.trim() ||
-                    selectionMode
-                  }
-                  className="rounded-xl bg-green-500 px-6 py-3 font-medium transition hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Send
-                </button>
-              </div>
+    {showEmojiPicker && (
+      <div className="absolute bottom-14 left-0 z-50">
+        <EmojiPicker
+          onEmojiClick={
+            handleEmojiClick
+          }
+          theme="dark"
+          width={350}
+          height={430}
+          previewConfig={{
+            showPreview: false,
+          }}
+        />
+      </div>
+    )}
+  </div>
+
+  <input
+    type="text"
+    value={input}
+    onChange={handleTyping}
+    disabled={selectionMode}
+    onFocus={() =>
+      setSelectedMessageId(null)
+    }
+    onKeyDown={(event) => {
+      if (
+        event.key === "Enter" &&
+        !event.shiftKey
+      ) {
+        event.preventDefault();
+        sendMessage();
+      }
+    }}
+    placeholder={
+      selectionMode
+        ? "Finish forwarding selection first"
+        : `Message ${selectedUser.username}...`
+    }
+    className="min-w-0 flex-1 rounded-xl bg-slate-800 px-4 py-3 text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-green-500 disabled:cursor-not-allowed disabled:opacity-50"
+  />
+
+  <button
+    type="button"
+    onClick={sendMessage}
+    disabled={
+      !input.trim() || selectionMode
+    }
+    className="rounded-xl bg-green-500 px-6 py-3 font-medium transition hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
+  >
+    Send
+  </button>
+</div>
             </>
           )}
         </main>
@@ -3170,6 +3243,8 @@ const fetchUnreadCounts = async () => {
                       forwardRecipientIds.includes(
                         friend._id,
                       );
+
+
 
                     return (
                       <button
