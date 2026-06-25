@@ -1,6 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaPaperclip, FaReply, FaShare, FaTimes } from "react-icons/fa";
+import { App as CapacitorApp } from "@capacitor/app";
+import {
+  FaArrowDown,
+  FaPaperclip,
+  FaReply,
+  FaShare,
+  FaTimes,
+  FaTrash,
+} from "react-icons/fa";
 
 import {
   decryptMessage,
@@ -10,6 +18,7 @@ import {
 
 import socket from "../services/socket";
 import API from "../services/api";
+
 import { uploadAttachment } from "../services/attachmentService";
 
 import UserCard from "../components/UserCard";
@@ -24,55 +33,111 @@ function Chat() {
   const typingTimeoutRef = useRef(null);
   const highlightTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const shouldAutoScrollRef = useRef(true);
+  const longPressTimerRef = useRef(null);
+  const touchStartRef = useRef(null);
+  const suppressMessageClickRef = useRef(false);
 
-  const loggedInUsername = sessionStorage.getItem("username");
+  const loggedInUsername =
+    sessionStorage.getItem("username");
 
-  const loggedInEmail = sessionStorage.getItem("email");
+  const loggedInEmail =
+    sessionStorage.getItem("email");
 
   const [users, setUsers] = useState([]);
-  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedUser, setSelectedUser] =
+    useState(null);
+
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
 
-  const [selectedMessageId, setSelectedMessageId] = useState(null);
+  const [
+    selectedMessageId,
+    setSelectedMessageId,
+  ] = useState(null);
 
-  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyingTo, setReplyingTo] =
+    useState(null);
 
-  const [messageSearch, setMessageSearch] = useState("");
+  const [messageSearch, setMessageSearch] =
+    useState("");
 
-  const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+  const [
+    highlightedMessageId,
+    setHighlightedMessageId,
+  ] = useState(null);
 
-  const [typingUser, setTypingUser] = useState(null);
+  const [typingUser, setTypingUser] =
+    useState(null);
 
-  const [searchUsername, setSearchUsername] = useState("");
+  const [searchUsername, setSearchUsername] =
+    useState("");
 
-  const [searchResults, setSearchResults] = useState([]);
+  const [searchResults, setSearchResults] =
+    useState([]);
 
-  const [friendRequests, setFriendRequests] = useState([]);
+  const [
+    friendRequests,
+    setFriendRequests,
+  ] = useState([]);
 
-  const [friendSearch, setFriendSearch] = useState("");
+  const [friendSearch, setFriendSearch] =
+    useState("");
 
-  const [unreadCounts, setUnreadCounts] = useState({});
+  const [unreadCounts, setUnreadCounts] =
+    useState({});
 
-  const [lastMessageTimes, setLastMessageTimes] = useState({});
+  const [selectionMode, setSelectionMode] =
+    useState(false);
 
-  const [lastMessagePreviews, setLastMessagePreviews] = useState({});
+  const [
+    selectedMessageIds,
+    setSelectedMessageIds,
+  ] = useState([]);
 
-  const [selectionMode, setSelectionMode] = useState(false);
+  const [
+    showForwardModal,
+    setShowForwardModal,
+  ] = useState(false);
 
-  const [selectedMessageIds, setSelectedMessageIds] = useState([]);
+  const [
+    forwardRecipientIds,
+    setForwardRecipientIds,
+  ] = useState([]);
 
-  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [forwardSearch, setForwardSearch] =
+    useState("");
 
-  const [forwardRecipientIds, setForwardRecipientIds] = useState([]);
+  const [isForwarding, setIsForwarding] =
+    useState(false);
 
-  const [forwardSearch, setForwardSearch] = useState("");
+  const [isUploading, setIsUploading] =
+    useState(false);
 
-  const [isForwarding, setIsForwarding] = useState(false);
+  const [uploadProgress, setUploadProgress] =
+    useState(0);
 
-  const [isUploading, setIsUploading] = useState(false);
+  const [
+    mobileActionMessage,
+    setMobileActionMessage,
+  ] = useState(null);
 
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [
+    swipingMessageId,
+    setSwipingMessageId,
+  ] = useState(null);
+
+  const [swipeOffset, setSwipeOffset] =
+    useState(0);
+
+  const [
+    showScrollToBottom,
+    setShowScrollToBottom,
+  ] = useState(false);
+
+  const [latestMessages, setLatestMessages] =
+    useState({});
 
   const resetForwardSelection = () => {
     setSelectionMode(false);
@@ -82,240 +147,8 @@ function Chat() {
     setForwardSearch("");
   };
 
-  const getSidebarMessagePreview = (message, friendId) => {
-    if (!message) {
-      return "";
-    }
-
-    const currentUserId = sessionStorage.getItem("userId");
-
-    const sentByCurrentUser = message.senderId?.toString() === currentUserId;
-
-    const prefix = sentByCurrentUser ? "You: " : "";
-
-    if (message.messageType === "image") {
-      return `${prefix}📷 Photo`;
-    }
-
-    if (message.messageType === "file") {
-      return `${prefix}📎 ${message.attachmentOriginalName || "File"}`;
-    }
-
-    if (typeof message.text !== "string" || !message.text) {
-      return `${prefix}Message`;
-    }
-
-    try {
-      const chatKey = generateChatKey(currentUserId, friendId);
-
-      const decryptedText = decryptMessage(message.text, chatKey);
-
-      if (typeof decryptedText === "string" && decryptedText.trim()) {
-        return `${prefix}${decryptedText.trim()}`;
-      }
-
-      return `${prefix}Message`;
-    } catch (error) {
-      console.error("Sidebar message decryption failed:", error);
-
-      return `${prefix}Message`;
-    }
-  };
-
-  const updateFriendActivity = (friendId, message) => {
-    if (!friendId || !message) {
-      return;
-    }
-
-    const createdAt = message.createdAt || new Date().toISOString();
-
-    const preview = getSidebarMessagePreview(message, friendId);
-
-    setLastMessageTimes((previousTimes) => ({
-      ...previousTimes,
-      [friendId]: createdAt,
-    }));
-
-    setLastMessagePreviews((previousPreviews) => ({
-      ...previousPreviews,
-      [friendId]: preview,
-    }));
-  };
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
-  };
-
-  const fetchFriends = async () => {
-    try {
-      const currentUserId = sessionStorage.getItem("userId");
-
-      const response = await API.get(`/auth/friends/${currentUserId}`);
-
-      setUsers(response.data || []);
-    } catch (error) {
-      console.log("Failed to fetch friends:", error);
-    }
-  };
-
-  const fetchFriendRequests = async () => {
-    try {
-      const currentUserId = sessionStorage.getItem("userId");
-
-      const response = await API.get(`/auth/friend-requests/${currentUserId}`);
-
-      setFriendRequests(response.data || []);
-    } catch (error) {
-      console.log("Failed to fetch friend requests:", error);
-    }
-  };
-
-  const fetchUnreadCounts = async () => {
-    try {
-      const currentUserId = sessionStorage.getItem("userId");
-
-      const response = await API.get(`/messages/unread/${currentUserId}`);
-
-      setUnreadCounts(response.data || {});
-    } catch (error) {
-      console.log("Failed to fetch unread counts:", error);
-    }
-  };
-
-  const fetchRecentMessageTimes = async () => {
-    try {
-      const currentUserId = sessionStorage.getItem("userId");
-
-      const response = await API.get(`/messages/recent/${currentUserId}`);
-
-      const recentChats = response.data || {};
-
-      const messageTimes = {};
-      const messagePreviews = {};
-
-      Object.entries(recentChats).forEach(([friendId, message]) => {
-        if (!message || typeof message !== "object") {
-          return;
-        }
-
-        messageTimes[friendId] = message.createdAt || null;
-
-        messagePreviews[friendId] = getSidebarMessagePreview(message, friendId);
-      });
-
-      setLastMessageTimes(messageTimes);
-
-      setLastMessagePreviews(messagePreviews);
-    } catch (error) {
-      console.log("Failed to fetch recent messages:", error);
-    }
-  };
-
-  const fetchMessages = async () => {
-    if (!selectedUser) {
-      return;
-    }
-
-    try {
-      const currentUserId = sessionStorage.getItem("userId");
-
-      const response = await API.get(
-        `/messages/${currentUserId}/${selectedUser._id}`,
-      );
-
-      const formattedMessages = (response.data || []).map((message) => ({
-        id: message.messageId,
-        messageId: message.messageId,
-        text: message.text || "",
-
-        sender: message.senderId.toString() === currentUserId ? "me" : "other",
-
-        senderId: message.senderId.toString(),
-
-        receiverId: message.receiverId.toString(),
-
-        createdAt: message.createdAt,
-
-        status: message.status || "sent",
-
-        messageType: message.messageType || "text",
-
-        attachmentStoredName: message.attachmentStoredName || null,
-
-        attachmentOriginalName: message.attachmentOriginalName || null,
-
-        attachmentMimeType: message.attachmentMimeType || null,
-
-        attachmentSize: message.attachmentSize || null,
-
-        replyToMessageId: message.replyToMessageId || null,
-
-        replyToText: message.replyToText || null,
-
-        replyToSenderId: message.replyToSenderId
-          ? message.replyToSenderId.toString()
-          : null,
-
-        isForwarded: Boolean(message.isForwarded),
-
-        forwardBatchId: message.forwardBatchId || null,
-
-        originalMessageId: message.originalMessageId || null,
-      }));
-
-      setMessages(formattedMessages);
-      setSelectedMessageId(null);
-      setReplyingTo(null);
-
-      resetForwardSelection();
-
-      messageRefs.current = {};
-
-      setUnreadCounts((previousCounts) => ({
-        ...previousCounts,
-        [selectedUser._id]: 0,
-      }));
-    } catch (error) {
-      console.log("Failed to fetch messages:", error);
-    }
-  };
-
-  const handleBackToWelcome = () => {
-    if (selectedUser) {
-      socket.emit("stop_typing", {
-        receiverId: selectedUser._id,
-      });
-    }
-
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-
-      typingTimeoutRef.current = null;
-    }
-
-    setSelectedUser(null);
-    setMessages([]);
-    setInput("");
-    setSelectedMessageId(null);
-    setReplyingTo(null);
-    setTypingUser(null);
-    setMessageSearch("");
-    setHighlightedMessageId(null);
-    setIsUploading(false);
-    setUploadProgress(0);
-
-    resetForwardSelection();
-
-    messageRefs.current = {};
-  };
-
   useEffect(() => {
-    fetchFriends();
-    fetchFriendRequests();
-    fetchUnreadCounts();
-    fetchRecentMessageTimes();
+    refreshSidebarData();
   }, []);
 
   useEffect(() => {
@@ -340,65 +173,88 @@ function Chat() {
       setTypingUser(null);
       setMessageSearch("");
       setHighlightedMessageId(null);
-
       resetForwardSelection();
-
       messageRefs.current = {};
-
       return;
     }
 
+    shouldAutoScrollRef.current = true;
+    setShowScrollToBottom(false);
     fetchMessages();
   }, [selectedUser]);
 
   useEffect(() => {
     const handleReceiveMessage = (data) => {
-      const currentUserId = sessionStorage.getItem("userId");
+      const currentUserId =
+        sessionStorage.getItem("userId");
 
       if (data.receiverId !== currentUserId) {
         return;
       }
 
-      const receivedAt = data.createdAt || new Date().toISOString();
-
       const receivedMessage = {
-        id: data.id || data.messageId || Date.now().toString(),
+        id:
+          data.id ||
+          data.messageId ||
+          Date.now().toString(),
 
-        messageId: data.id || data.messageId,
+        messageId:
+          data.id || data.messageId,
 
         text: data.text || "",
         sender: "other",
         senderId: data.senderId,
         receiverId: data.receiverId,
-        createdAt: receivedAt,
+
+        createdAt:
+          data.createdAt ||
+          new Date().toISOString(),
+
         status: data.status || "sent",
 
-        messageType: data.messageType || "text",
+        messageType:
+          data.messageType || "text",
 
-        attachmentStoredName: data.attachmentStoredName || null,
+        attachmentStoredName:
+          data.attachmentStoredName || null,
 
-        attachmentOriginalName: data.attachmentOriginalName || null,
+        attachmentOriginalName:
+          data.attachmentOriginalName || null,
 
-        attachmentMimeType: data.attachmentMimeType || null,
+        attachmentMimeType:
+          data.attachmentMimeType || null,
 
-        attachmentSize: data.attachmentSize || null,
+        attachmentSize:
+          data.attachmentSize || null,
 
-        replyToMessageId: data.replyToMessageId || null,
+        replyToMessageId:
+          data.replyToMessageId || null,
 
-        replyToText: data.replyToText || null,
+        replyToText:
+          data.replyToText || null,
 
-        replyToSenderId: data.replyToSenderId || null,
+        replyToSenderId:
+          data.replyToSenderId || null,
 
-        isForwarded: Boolean(data.isForwarded),
+        isForwarded:
+          Boolean(data.isForwarded),
 
-        forwardBatchId: data.forwardBatchId || null,
+        forwardBatchId:
+          data.forwardBatchId || null,
 
-        originalMessageId: data.originalMessageId || null,
+        originalMessageId:
+          data.originalMessageId || null,
       };
 
-      updateFriendActivity(data.senderId, receivedMessage);
+      updateLatestMessage(
+        data.senderId,
+        receivedMessage,
+      );
 
-      if (selectedUser && selectedUser._id === data.senderId) {
+      if (
+        selectedUser &&
+        selectedUser._id === data.senderId
+      ) {
         setMessages((previousMessages) => [
           ...previousMessages,
           receivedMessage,
@@ -413,39 +269,65 @@ function Chat() {
         setUnreadCounts((previousCounts) => ({
           ...previousCounts,
 
-          [data.senderId]: (previousCounts[data.senderId] || 0) + 1,
+          [data.senderId]:
+            (previousCounts[data.senderId] ||
+              0) + 1,
         }));
       }
     };
 
-    socket.on("receive_message", handleReceiveMessage);
+    socket.on(
+      "receive_message",
+      handleReceiveMessage,
+    );
 
     return () => {
-      socket.off("receive_message", handleReceiveMessage);
+      socket.off(
+        "receive_message",
+        handleReceiveMessage,
+      );
     };
   }, [selectedUser]);
 
   useEffect(() => {
     const handleUserTyping = (data) => {
-      if (selectedUser && data.senderId === selectedUser._id) {
+      if (
+        selectedUser &&
+        data.senderId === selectedUser._id
+      ) {
         setTypingUser(data.username);
       }
     };
 
     const handleUserStopTyping = (data) => {
-      if (selectedUser && data.senderId === selectedUser._id) {
+      if (
+        selectedUser &&
+        data.senderId === selectedUser._id
+      ) {
         setTypingUser(null);
       }
     };
 
-    socket.on("user_typing", handleUserTyping);
+    socket.on(
+      "user_typing",
+      handleUserTyping,
+    );
 
-    socket.on("user_stop_typing", handleUserStopTyping);
+    socket.on(
+      "user_stop_typing",
+      handleUserStopTyping,
+    );
 
     return () => {
-      socket.off("user_typing", handleUserTyping);
+      socket.off(
+        "user_typing",
+        handleUserTyping,
+      );
 
-      socket.off("user_stop_typing", handleUserStopTyping);
+      socket.off(
+        "user_stop_typing",
+        handleUserStopTyping,
+      );
     };
   }, [selectedUser]);
 
@@ -457,7 +339,9 @@ function Chat() {
             ? {
                 ...message,
                 status: "sent",
-                createdAt: data.createdAt || message.createdAt,
+                createdAt:
+                  data.createdAt ||
+                  message.createdAt,
               }
             : message,
         ),
@@ -490,18 +374,36 @@ function Chat() {
       );
     };
 
-    socket.on("message_sent", handleMessageSent);
+    socket.on(
+      "message_sent",
+      handleMessageSent,
+    );
 
-    socket.on("message_failed", handleMessageFailed);
+    socket.on(
+      "message_failed",
+      handleMessageFailed,
+    );
 
-    socket.on("message_seen_update", handleMessageSeen);
+    socket.on(
+      "message_seen_update",
+      handleMessageSeen,
+    );
 
     return () => {
-      socket.off("message_sent", handleMessageSent);
+      socket.off(
+        "message_sent",
+        handleMessageSent,
+      );
 
-      socket.off("message_failed", handleMessageFailed);
+      socket.off(
+        "message_failed",
+        handleMessageFailed,
+      );
 
-      socket.off("message_seen_update", handleMessageSeen);
+      socket.off(
+        "message_seen_update",
+        handleMessageSeen,
+      );
     };
   }, []);
 
@@ -513,7 +415,8 @@ function Chat() {
     messages.forEach((message) => {
       if (
         message.sender === "other" &&
-        message.senderId === selectedUser._id &&
+        message.senderId ===
+          selectedUser._id &&
         message.status !== "seen"
       ) {
         socket.emit("message_seen", {
@@ -549,30 +452,509 @@ function Chat() {
       handleBackToWelcome();
     };
 
-    window.addEventListener("keydown", handleEscape);
+    window.addEventListener(
+      "keydown",
+      handleEscape,
+    );
 
     return () => {
-      window.removeEventListener("keydown", handleEscape);
+      window.removeEventListener(
+        "keydown",
+        handleEscape,
+      );
     };
-  }, [showForwardModal, selectionMode, replyingTo, selectedUser]);
+  }, [
+    showForwardModal,
+    selectionMode,
+    replyingTo,
+    selectedUser,
+  ]);
 
   useEffect(() => {
-    if (!messageSearch.trim()) {
+    if (
+      !messageSearch.trim() &&
+      shouldAutoScrollRef.current
+    ) {
       scrollToBottom();
     }
-  }, [messages, typingUser]);
+  }, [
+    messages,
+    typingUser,
+    messageSearch,
+  ]);
+
+  useEffect(() => {
+    let backButtonListener;
+
+    const registerBackButton = async () => {
+      backButtonListener =
+        await CapacitorApp.addListener(
+          "backButton",
+          () => {
+            if (mobileActionMessage) {
+              setMobileActionMessage(null);
+              return;
+            }
+
+            if (showForwardModal) {
+              setShowForwardModal(false);
+              return;
+            }
+
+            if (selectionMode) {
+              resetForwardSelection();
+              return;
+            }
+
+            if (replyingTo) {
+              setReplyingTo(null);
+              return;
+            }
+
+            if (selectedUser) {
+              handleBackToWelcome();
+              return;
+            }
+
+            CapacitorApp.minimizeApp();
+          },
+        );
+    };
+
+    registerBackButton();
+
+    return () => {
+      backButtonListener?.remove();
+    };
+  }, [
+    selectedUser,
+    mobileActionMessage,
+    showForwardModal,
+    selectionMode,
+    replyingTo,
+  ]);
+
+  useEffect(() => {
+    let appStateListener;
+
+    const registerAppStateListener =
+      async () => {
+        appStateListener =
+          await CapacitorApp.addListener(
+            "appStateChange",
+            ({ isActive }) => {
+              if (isActive) {
+                refreshSidebarData();
+              }
+            },
+          );
+      };
+
+    registerAppStateListener();
+
+    return () => {
+      appStateListener?.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const refreshInterval =
+      window.setInterval(() => {
+        refreshSidebarData();
+      }, 10000);
+
+    return () => {
+      window.clearInterval(
+        refreshInterval,
+      );
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState ===
+        "visible"
+      ) {
+        refreshSidebarData();
+      }
+    };
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange,
+    );
+
+    return () => {
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
+        clearTimeout(
+          typingTimeoutRef.current,
+        );
       }
 
       if (highlightTimeoutRef.current) {
-        clearTimeout(highlightTimeoutRef.current);
+        clearTimeout(
+          highlightTimeoutRef.current,
+        );
+      }
+
+      if (longPressTimerRef.current) {
+        clearTimeout(
+          longPressTimerRef.current,
+        );
       }
     };
   }, []);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
+  };
+
+  const fetchFriends = async () => {
+    try {
+      const currentUserId =
+        sessionStorage.getItem("userId");
+
+      const response = await API.get(
+        `/auth/friends/${currentUserId}`,
+      );
+
+      setUsers(response.data);
+    } catch (error) {
+      console.log(
+        "Failed to fetch friends:",
+        error,
+      );
+    }
+  };
+
+  const fetchLatestMessages = async () => {
+  try {
+    const currentUserId =
+      sessionStorage.getItem("userId");
+
+    if (!currentUserId) {
+      return;
+    }
+
+    const response = await API.get(
+      `/messages/recent/${currentUserId}`,
+    );
+
+    const serverData = response.data;
+
+    const normalizedMessages = {};
+
+    // Handles an array response from the backend.
+    if (Array.isArray(serverData)) {
+      serverData.forEach((message) => {
+        const senderId =
+          message.senderId?._id ||
+          message.senderId;
+
+        const receiverId =
+          message.receiverId?._id ||
+          message.receiverId;
+
+        const friendId =
+          String(senderId) ===
+          String(currentUserId)
+            ? String(receiverId)
+            : String(senderId);
+
+        if (!friendId) {
+          return;
+        }
+
+        normalizedMessages[friendId] = {
+          ...message,
+          friendId,
+        };
+      });
+    }
+
+    // Handles an object keyed by friend ID.
+    if (
+      serverData &&
+      !Array.isArray(serverData) &&
+      typeof serverData === "object"
+    ) {
+      Object.entries(serverData).forEach(
+        ([friendId, message]) => {
+          if (!message) {
+            return;
+          }
+
+          normalizedMessages[
+            String(friendId)
+          ] = {
+            ...message,
+            friendId: String(friendId),
+          };
+        },
+      );
+    }
+
+    // Merge server data without replacing a newer local message.
+    setLatestMessages(
+      (previousMessages) => {
+        const mergedMessages = {
+          ...previousMessages,
+        };
+
+        Object.entries(
+          normalizedMessages,
+        ).forEach(
+          ([friendId, serverMessage]) => {
+            const localMessage =
+              previousMessages[friendId];
+
+            const serverTime =
+              new Date(
+                serverMessage.createdAt || 0,
+              ).getTime();
+
+            const localTime = new Date(
+              localMessage?.createdAt || 0,
+            ).getTime();
+
+            if (
+              !localMessage ||
+              serverTime >= localTime
+            ) {
+              mergedMessages[friendId] =
+                serverMessage;
+            }
+          },
+        );
+
+        return mergedMessages;
+      },
+    );
+  } catch (error) {
+    console.log(
+      "Failed to fetch latest messages:",
+      error,
+    );
+  }
+};
+
+const fetchFriendRequests = async () => {
+  try {
+    const currentUserId =
+      sessionStorage.getItem("userId");
+
+    if (!currentUserId) {
+      return;
+    }
+
+    const response = await API.get(
+      `/auth/friend-requests/${currentUserId}`,
+    );
+
+    setFriendRequests(
+      Array.isArray(response.data)
+        ? response.data
+        : [],
+    );
+  } catch (error) {
+    console.log(
+      "Failed to fetch friend requests:",
+      error,
+    );
+  }
+};
+
+const fetchUnreadCounts = async () => {
+  try {
+    const currentUserId =
+      sessionStorage.getItem("userId");
+
+    if (!currentUserId) {
+      return;
+    }
+
+    const response = await API.get(
+      `/messages/unread/${currentUserId}`,
+    );
+
+    setUnreadCounts(
+      response.data &&
+        typeof response.data === "object"
+        ? response.data
+        : {},
+    );
+  } catch (error) {
+    console.log(
+      "Failed to fetch unread counts:",
+      error,
+    );
+  }
+};
+
+  const refreshSidebarData = async () => {
+    await Promise.allSettled([
+      fetchFriends(),
+      fetchFriendRequests(),
+      fetchUnreadCounts(),
+      fetchLatestMessages(),
+    ]);
+  };
+
+  const updateLatestMessage = (
+  friendId,
+  message,
+) => {
+  if (!friendId || !message) {
+    return;
+  }
+
+  const normalizedFriendId =
+    String(friendId);
+
+  setLatestMessages(
+    (previousMessages) => {
+      const existingMessage =
+        previousMessages[
+          normalizedFriendId
+        ];
+
+      const incomingTime = new Date(
+        message.createdAt ||
+          new Date().toISOString(),
+      ).getTime();
+
+      const existingTime = new Date(
+        existingMessage?.createdAt || 0,
+      ).getTime();
+
+      if (
+        existingMessage &&
+        existingTime > incomingTime
+      ) {
+        return previousMessages;
+      }
+
+      return {
+        ...previousMessages,
+
+        [normalizedFriendId]: {
+          ...message,
+          friendId:
+            normalizedFriendId,
+
+          createdAt:
+            message.createdAt ||
+            new Date().toISOString(),
+        },
+      };
+    },
+  );
+};
+
+  const fetchMessages = async () => {
+    try {
+      const currentUserId =
+        sessionStorage.getItem("userId");
+
+      const response = await API.get(
+        `/messages/${currentUserId}/${selectedUser._id}`,
+      );
+
+      const formattedMessages =
+        response.data.map((message) => ({
+          id: message.messageId,
+          messageId: message.messageId,
+          text: message.text || "",
+
+          sender:
+            message.senderId.toString() ===
+            currentUserId
+              ? "me"
+              : "other",
+
+          senderId:
+            message.senderId.toString(),
+
+          receiverId:
+            message.receiverId.toString(),
+
+          createdAt: message.createdAt,
+
+          status:
+            message.status || "sent",
+
+          messageType:
+            message.messageType || "text",
+
+          attachmentStoredName:
+            message.attachmentStoredName ||
+            null,
+
+          attachmentOriginalName:
+            message.attachmentOriginalName ||
+            null,
+
+          attachmentMimeType:
+            message.attachmentMimeType ||
+            null,
+
+          attachmentSize:
+            message.attachmentSize || null,
+
+          replyToMessageId:
+            message.replyToMessageId ||
+            null,
+
+          replyToText:
+            message.replyToText || null,
+
+          replyToSenderId:
+            message.replyToSenderId
+              ? message.replyToSenderId.toString()
+              : null,
+
+          isForwarded: Boolean(
+            message.isForwarded,
+          ),
+
+          forwardBatchId:
+            message.forwardBatchId || null,originalMessageId:
+            message.originalMessageId ||
+            null,
+        }));
+        
+
+      setMessages(formattedMessages);
+      setSelectedMessageId(null);
+      setReplyingTo(null);
+      resetForwardSelection();
+      messageRefs.current = {};
+
+      setUnreadCounts(
+        (previousCounts) => ({
+          ...previousCounts,
+          [selectedUser._id]: 0,
+        }),
+      );
+    } catch (error) {
+      console.log(
+        "Failed to fetch messages:",
+        error,
+      );
+    }
+  };
 
   const handleTyping = (event) => {
     const value = event.target.value;
@@ -594,46 +976,70 @@ function Chat() {
     }
 
     if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
+      clearTimeout(
+        typingTimeoutRef.current,
+      );
     }
 
-    typingTimeoutRef.current = setTimeout(() => {
-      socket.emit("stop_typing", {
-        receiverId: selectedUser._id,
-      });
-    }, 1000);
+    typingTimeoutRef.current =
+      setTimeout(() => {
+        socket.emit("stop_typing", {
+          receiverId: selectedUser._id,
+        });
+      }, 1000);
   };
 
   const getChatKey = (userId) => {
-    const currentUserId = sessionStorage.getItem("userId");
+    const currentUserId =
+      sessionStorage.getItem("userId");
 
-    return generateChatKey(currentUserId, userId);
+    return generateChatKey(
+      currentUserId,
+      userId,
+    );
   };
 
   const createMessageId = () => {
-    return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return `${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
   };
 
-  const createEncryptedReplyText = (chatEncryptionKey) => {
+  const createEncryptedReplyText = (
+    chatEncryptionKey,
+  ) => {
     if (!replyingTo) {
       return null;
     }
 
-    return encryptMessage(replyingTo.decryptedText, chatEncryptionKey);
+    return encryptMessage(
+      replyingTo.decryptedText,
+      chatEncryptionKey,
+    );
   };
 
   const sendMessage = () => {
-    if (!input.trim() || !selectedUser) {
+    if (
+      !input.trim() ||
+      !selectedUser
+    ) {
       return;
     }
 
-    const currentUserId = sessionStorage.getItem("userId");
+    const currentUserId =
+      sessionStorage.getItem("userId");
 
-    const chatEncryptionKey = getChatKey(selectedUser._id);
+    const chatEncryptionKey =
+      getChatKey(selectedUser._id);
 
-    const encryptedText = encryptMessage(input.trim(), chatEncryptionKey);
+    const encryptedText =
+      encryptMessage(
+        input.trim(),
+        chatEncryptionKey,
+      );
 
-    const newMessageId = createMessageId();
+    const newMessageId =
+      createMessageId();
 
     const messageData = {
       id: newMessageId,
@@ -642,37 +1048,52 @@ function Chat() {
       sender: "me",
       senderId: currentUserId,
       receiverId: selectedUser._id,
-      createdAt: new Date().toISOString(),
+      createdAt:
+        new Date().toISOString(),
       status: "sending",
       messageType: "text",
       attachmentStoredName: null,
       attachmentOriginalName: null,
       attachmentMimeType: null,
       attachmentSize: null,
-
-      replyToMessageId: replyingTo?.id || null,
-
-      replyToText: createEncryptedReplyText(chatEncryptionKey),
-
-      replyToSenderId: replyingTo?.senderId || null,
-
+      replyToMessageId:
+        replyingTo?.id || null,
+      replyToText:
+        createEncryptedReplyText(
+          chatEncryptionKey,
+        ),
+      replyToSenderId:
+        replyingTo?.senderId || null,
       isForwarded: false,
       forwardBatchId: null,
       originalMessageId: null,
     };
 
-    updateFriendActivity(selectedUser._id, messageData);
+    shouldAutoScrollRef.current = true;
 
-    setMessages((previousMessages) => [...previousMessages, messageData]);
+    setMessages((previousMessages) => [
+      ...previousMessages,
+      messageData,
+    ]);
+
+    updateLatestMessage(
+      selectedUser._id,
+      messageData,
+    );
 
     socket.emit("stop_typing", {
       receiverId: selectedUser._id,
     });
 
-    socket.emit("send_message", messageData);
+    socket.emit(
+      "send_message",
+      messageData,
+    );
 
     if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
+      clearTimeout(
+        typingTimeoutRef.current,
+      );
 
       typingTimeoutRef.current = null;
     }
@@ -682,83 +1103,134 @@ function Chat() {
     setSelectedMessageId(null);
   };
 
-  const handleAttachmentSelect = async (event) => {
-    const file = event.target.files?.[0];
+  const handleAttachmentSelect =
+    async (event) => {
+      const file =
+        event.target.files?.[0];
 
-    event.target.value = "";
+      event.target.value = "";
 
-    if (!file || !selectedUser || selectionMode || isUploading) {
-      return;
-    }
+      if (
+        !file ||
+        !selectedUser ||
+        selectionMode ||
+        isUploading
+      ) {
+        return;
+      }
 
-    if (file.size > 10 * 1024 * 1024) {
-      alert("File is too large. Maximum size is 10 MB");
+      if (
+        file.size >
+        10 * 1024 * 1024
+      ) {
+        alert(
+          "File is too large. Maximum size is 10 MB",
+        );
 
-      return;
-    }
+        return;
+      }
 
-    setIsUploading(true);
-    setUploadProgress(0);
-
-    try {
-      const attachment = await uploadAttachment(file, setUploadProgress);
-
-      const currentUserId = sessionStorage.getItem("userId");
-
-      const chatEncryptionKey = getChatKey(selectedUser._id);
-
-      const newMessageId = createMessageId();
-
-      const messageData = {
-        id: newMessageId,
-        messageId: newMessageId,
-        text: "",
-        sender: "me",
-        senderId: currentUserId,
-        receiverId: selectedUser._id,
-
-        createdAt: new Date().toISOString(),
-
-        status: "sending",
-
-        messageType: attachment.isImage ? "image" : "file",
-
-        attachmentStoredName: attachment.storedName,
-
-        attachmentOriginalName: attachment.originalName,
-
-        attachmentMimeType: attachment.mimeType,
-
-        attachmentSize: attachment.size,
-
-        uploadToken: attachment.uploadToken,
-
-        replyToMessageId: replyingTo?.id || null,
-
-        replyToText: createEncryptedReplyText(chatEncryptionKey),
-
-        replyToSenderId: replyingTo?.senderId || null,
-
-        isForwarded: false,
-        forwardBatchId: null,
-        originalMessageId: null,
-      };
-
-      updateFriendActivity(selectedUser._id, messageData);
-
-      setMessages((previousMessages) => [...previousMessages, messageData]);
-
-      socket.emit("send_message", messageData);
-
-      setReplyingTo(null);
-      setSelectedMessageId(null);
-    } catch (error) {
-      alert(error.response?.data?.message || "Failed to upload attachment");
-    } finally {
-      setIsUploading(false);
+      setIsUploading(true);
       setUploadProgress(0);
-    }
-  };
+
+      try {
+        const attachment =
+          await uploadAttachment(
+            file,
+            setUploadProgress,
+          );
+
+        const currentUserId =
+          sessionStorage.getItem(
+            "userId",
+          );
+
+        const chatEncryptionKey =
+          getChatKey(selectedUser._id);
+
+        const newMessageId =
+          createMessageId();
+
+        const messageData = {
+          id: newMessageId,
+          messageId: newMessageId,
+          text: "",
+          sender: "me",
+          senderId: currentUserId,
+          receiverId: selectedUser._id,
+          createdAt:
+            new Date().toISOString(),
+          status: "sending",
+
+          messageType:
+            attachment.isImage
+              ? "image"
+              : "file",
+
+          attachmentStoredName:
+            attachment.storedName,
+
+          attachmentOriginalName:
+            attachment.originalName,
+
+          attachmentMimeType:
+            attachment.mimeType,
+
+          attachmentSize:
+            attachment.size,
+
+          uploadToken:
+            attachment.uploadToken,
+
+          replyToMessageId:
+            replyingTo?.id || null,
+
+          replyToText:
+            createEncryptedReplyText(
+              chatEncryptionKey,
+            ),
+
+          replyToSenderId:
+            replyingTo?.senderId || null,
+
+          isForwarded: false,
+          forwardBatchId: null,
+          originalMessageId: null,
+        };
+
+        shouldAutoScrollRef.current =
+          true;
+
+        setMessages(
+          (previousMessages) => [
+            ...previousMessages,
+            messageData,
+          ],
+        );
+
+        updateLatestMessage(
+          selectedUser._id,
+          messageData,
+        );
+
+        socket.emit(
+          "send_message",
+          messageData,
+        );
+
+        setReplyingTo(null);
+        setSelectedMessageId(null);
+      } catch (error) {
+        alert(
+          error.response?.data
+            ?.message ||
+            "Failed to upload attachment",
+        );
+      } finally {
+        setIsUploading(false);
+        setUploadProgress(0);
+      }
+    };
 
   const handleLogout = () => {
     socket.disconnect();
@@ -774,60 +1246,93 @@ function Chat() {
 
     try {
       const response = await API.get(
-        `/auth/search/${encodeURIComponent(searchUsername.trim())}`,
+        `/auth/search/${encodeURIComponent(
+          searchUsername.trim(),
+        )}`,
       );
 
-      const nonFriendUsers = (response.data || []).filter(
-        (searchedUser) =>
-          !users.some((friend) => friend._id === searchedUser._id),
-      );
+      const nonFriendUsers =
+        response.data.filter(
+          (searchedUser) =>
+            !users.some(
+              (friend) =>
+                friend._id ===
+                searchedUser._id,
+            ),
+        );
 
       setSearchResults(nonFriendUsers);
     } catch (error) {
-      console.log("Search failed:", error);
+      console.log(
+        "Search failed:",
+        error,
+      );
     }
   };
 
-  const handleSendRequest = async (toUserId) => {
+  const handleSendRequest = async (
+    toUserId,
+  ) => {
     try {
-      const response = await API.post("/auth/friend-request", {
-        toUserId,
-      });
+      const response = await API.post(
+        "/auth/friend-request",
+        {
+          toUserId,
+        },
+      );
 
       alert(response.data.message);
+
+      await refreshSidebarData();
     } catch (error) {
-      alert(error.response?.data?.message || "Failed to send friend request");
+      alert(
+        error.response?.data?.message ||
+          "Failed to send friend request",
+      );
     }
   };
 
-  const handleAcceptRequest = async (requestFromId) => {
+  const handleAcceptRequest = async (
+    requestFromId,
+  ) => {
     try {
-      const response = await API.post("/auth/friend-request/accept", {
-        requestFromId,
-      });
+      const response = await API.post(
+        "/auth/friend-request/accept",
+        {
+          requestFromId,
+        },
+      );
 
       alert(response.data.message);
 
-      await fetchFriendRequests();
-      await fetchFriends();
-      await fetchUnreadCounts();
-      await fetchRecentMessageTimes();
+      await refreshSidebarData();
     } catch (error) {
-      alert(error.response?.data?.message || "Failed to accept friend request");
+      alert(
+        error.response?.data?.message ||
+          "Failed to accept friend request",
+      );
     }
   };
 
-  const handleRejectRequest = async (requestFromId) => {
+  const handleRejectRequest = async (
+    requestFromId,
+  ) => {
     try {
-      const response = await API.post("/auth/friend-request/reject", {
-        requestFromId,
-      });
+      const response = await API.post(
+        "/auth/friend-request/reject",
+        {
+          requestFromId,
+        },
+      );
 
       alert(response.data.message);
 
-      await fetchFriendRequests();
+      await refreshSidebarData();
     } catch (error) {
-      alert(error.response?.data?.message || "Failed to reject friend request");
+      alert(
+        error.response?.data?.message ||
+          "Failed to reject friend request",
+      );
     }
   };
 
@@ -836,60 +1341,53 @@ function Chat() {
       return;
     }
 
-    const confirmRemove = window.confirm(
-      `Remove ${selectedUser.username} from your friends?`,
-    );
+    const confirmRemove =
+      window.confirm(
+        `Remove ${selectedUser.username} from your friends?`,
+      );
 
     if (!confirmRemove) {
       return;
     }
 
     try {
-      const friendId = selectedUser._id;
-
-      const response = await API.post("/auth/friend/remove", {
-        friendId,
-      });
+      const response = await API.post(
+        "/auth/friend/remove",
+        {
+          friendId: selectedUser._id,
+        },
+      );
 
       alert(response.data.message);
 
       setUsers((previousUsers) =>
-        previousUsers.filter((user) => user._id !== friendId),
+        previousUsers.filter(
+          (user) =>
+            user._id !==
+            selectedUser._id,
+        ),
       );
 
-      setUnreadCounts((previousCounts) => {
-        const updatedCounts = {
-          ...previousCounts,
-        };
+      setUnreadCounts(
+        (previousCounts) => {
+          const updatedCounts = {
+            ...previousCounts,
+          };
 
-        delete updatedCounts[friendId];
+          delete updatedCounts[
+            selectedUser._id
+          ];
 
-        return updatedCounts;
-      });
-
-      setLastMessageTimes((previousTimes) => {
-        const updatedTimes = {
-          ...previousTimes,
-        };
-
-        delete updatedTimes[friendId];
-
-        return updatedTimes;
-      });
-
-      setLastMessagePreviews((previousPreviews) => {
-        const updatedPreviews = {
-          ...previousPreviews,
-        };
-
-        delete updatedPreviews[friendId];
-
-        return updatedPreviews;
-      });
+          return updatedCounts;
+        },
+      );
 
       handleBackToWelcome();
     } catch (error) {
-      alert(error.response?.data?.message || "Failed to remove friend");
+      alert(
+        error.response?.data?.message ||
+          "Failed to remove friend",
+      );
     }
   };
 
@@ -898,93 +1396,130 @@ function Chat() {
       return;
     }
 
-    const confirmClear = window.confirm(
-      `Clear chat with ${selectedUser.username}?`,
-    );
+    const confirmClear =
+      window.confirm(
+        `Clear chat with ${selectedUser.username}?`,
+      );
 
     if (!confirmClear) {
       return;
     }
 
     try {
-      const currentUserId = sessionStorage.getItem("userId");
+      const currentUserId =
+        sessionStorage.getItem("userId");
 
-      const friendId = selectedUser._id;
-
-      await API.delete(`/messages/clear/${currentUserId}/${friendId}`);
+      await API.delete(
+        `/messages/clear/${currentUserId}/${selectedUser._id}`,
+      );
 
       setMessages([]);
       setSelectedMessageId(null);
       setReplyingTo(null);
       setMessageSearch("");
       setHighlightedMessageId(null);
-
       resetForwardSelection();
 
       messageRefs.current = {};
 
-      setUnreadCounts((previousCounts) => ({
-        ...previousCounts,
-        [friendId]: 0,
-      }));
-
-      setLastMessageTimes((previousTimes) => {
-        const updatedTimes = {
-          ...previousTimes,
-        };
-
-        delete updatedTimes[friendId];
-
-        return updatedTimes;
-      });
-
-      setLastMessagePreviews((previousPreviews) => {
-        const updatedPreviews = {
-          ...previousPreviews,
-        };
-
-        delete updatedPreviews[friendId];
-
-        return updatedPreviews;
-      });
+      setUnreadCounts(
+        (previousCounts) => ({
+          ...previousCounts,
+          [selectedUser._id]: 0,
+        }),
+      );
     } catch (error) {
-      alert(error.response?.data?.message || "Failed to clear chat");
+      alert(
+        error.response?.data?.message ||
+          "Failed to clear chat",
+      );
     }
   };
 
-  const handleDeleteMessage = async (messageId) => {
+  const handleDeleteMessage = async (
+    messageId,
+  ) => {
     if (!messageId) {
       return;
     }
 
-    const confirmDelete = window.confirm("Delete this message for you?");
+    const confirmDelete =
+      window.confirm(
+        "Delete this message for you?",
+      );
 
     if (!confirmDelete) {
       return;
     }
 
     try {
-      const currentUserId = sessionStorage.getItem("userId");
+      const currentUserId =
+        sessionStorage.getItem("userId");
 
-      await API.delete(`/messages/${messageId}/${currentUserId}`);
-
-      setMessages((previousMessages) =>
-        previousMessages.filter((message) => message.id !== messageId),
+      await API.delete(
+        `/messages/${messageId}/${currentUserId}`,
       );
 
-      delete messageRefs.current[messageId];
+      setMessages((previousMessages) =>
+        previousMessages.filter(
+          (message) =>
+            message.id !== messageId,
+        ),
+      );
 
-      if (replyingTo?.id === messageId) {
+      delete messageRefs.current[
+        messageId
+      ];
+
+      if (
+        replyingTo?.id === messageId
+      ) {
         setReplyingTo(null);
       }
 
       setSelectedMessageId(null);
       setHighlightedMessageId(null);
-
-      await fetchRecentMessageTimes();
     } catch (error) {
-      alert(error.response?.data?.message || "Failed to delete message");
+      alert(
+        error.response?.data?.message ||
+          "Failed to delete message",
+      );
     }
+  };
+
+  const handleBackToWelcome = () => {
+    if (selectedUser) {
+      socket.emit("stop_typing", {
+        receiverId: selectedUser._id,
+      });
+    }
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(
+        typingTimeoutRef.current,
+      );
+
+      typingTimeoutRef.current = null;
+    }
+
+    setSelectedUser(null);
+    setMessages([]);
+    setInput("");
+    setSelectedMessageId(null);
+    setReplyingTo(null);
+    setTypingUser(null);
+    setMessageSearch("");
+    setHighlightedMessageId(null);
+    setIsUploading(false);
+    setUploadProgress(0);
+    resetForwardSelection();
+
+    messageRefs.current = {};
+    shouldAutoScrollRef.current = true;
+
+    setShowScrollToBottom(false);
+
+    refreshSidebarData();
   };
 
   const handleSelectFriend = (friend) => {
@@ -997,15 +1532,16 @@ function Chat() {
     setTypingUser(null);
     setIsUploading(false);
     setUploadProgress(0);
-
     resetForwardSelection();
 
     messageRefs.current = {};
 
-    setUnreadCounts((previousCounts) => ({
-      ...previousCounts,
-      [friend._id]: 0,
-    }));
+    setUnreadCounts(
+      (previousCounts) => ({
+        ...previousCounts,
+        [friend._id]: 0,
+      }),
+    );
   };
 
   const getStatusText = (status) => {
@@ -1024,7 +1560,9 @@ function Chat() {
     return "Sent";
   };
 
-  const getDecryptedText = (encryptedText) => {
+  const getDecryptedText = (
+    encryptedText,
+  ) => {
     if (!encryptedText) {
       return "";
     }
@@ -1033,29 +1571,50 @@ function Chat() {
       return encryptedText;
     }
 
-    return decryptMessage(encryptedText, getChatKey(selectedUser._id));
+    return decryptMessage(
+      encryptedText,
+      getChatKey(selectedUser._id),
+    );
   };
 
   const getMessagePreview = (message) => {
-    if (message.messageType === "image") {
-      return `Image: ${message.attachmentOriginalName || "Shared image"}`;
+    if (
+      message.messageType === "image"
+    ) {
+      return `Image: ${
+        message.attachmentOriginalName ||
+        "Shared image"
+      }`;
     }
 
-    if (message.messageType === "file") {
-      return `File: ${message.attachmentOriginalName || "Attachment"}`;
+    if (
+      message.messageType === "file"
+    ) {
+      return `File: ${
+        message.attachmentOriginalName ||
+        "Attachment"
+      }`;
     }
 
     return getDecryptedText(message.text);
   };
 
-  const getReplySenderName = (message) => {
-    const currentUserId = sessionStorage.getItem("userId");
+  const getReplySenderName = (
+    message,
+  ) => {
+    const currentUserId =
+      sessionStorage.getItem("userId");
 
-    if (message.replyToSenderId === currentUserId) {
+    if (
+      message.replyToSenderId ===
+      currentUserId
+    ) {
       return "You";
     }
 
-    return selectedUser?.username || "User";
+    return (
+      selectedUser?.username || "User"
+    );
   };
 
   const handleReplyMessage = (message) => {
@@ -1064,32 +1623,47 @@ function Chat() {
       senderId: message.senderId,
       sender: message.sender,
 
-      decryptedText: getMessagePreview(message),
+      decryptedText:
+        getMessagePreview(message),
     });
 
     setSelectedMessageId(null);
   };
 
-  const startForwardSelection = (messageId) => {
+  const startForwardSelection = (
+    messageId,
+  ) => {
     setReplyingTo(null);
     setSelectedMessageId(null);
     setSelectionMode(true);
-
     setSelectedMessageIds([messageId]);
   };
 
-  const toggleMessageSelection = (messageId) => {
-    setSelectedMessageIds((previousIds) => {
-      if (previousIds.includes(messageId)) {
-        return previousIds.filter((id) => id !== messageId);
-      }
+  const toggleMessageSelection = (
+    messageId,
+  ) => {
+    setSelectedMessageIds(
+      (previousIds) => {
+        if (
+          previousIds.includes(messageId)
+        ) {
+          return previousIds.filter(
+            (id) => id !== messageId,
+          );
+        }
 
-      return [...previousIds, messageId];
-    });
+        return [
+          ...previousIds,
+          messageId,
+        ];
+      },
+    );
   };
 
   const openForwardModal = () => {
-    if (selectedMessageIds.length === 0) {
+    if (
+      selectedMessageIds.length === 0
+    ) {
       return;
     }
 
@@ -1098,121 +1672,192 @@ function Chat() {
     setShowForwardModal(true);
   };
 
-  const toggleForwardRecipient = (userId) => {
-    setForwardRecipientIds((previousIds) => {
-      if (previousIds.includes(userId)) {
-        return previousIds.filter((id) => id !== userId);
+  const toggleForwardRecipient = (
+    userId,
+  ) => {
+    setForwardRecipientIds(
+      (previousIds) => {
+        if (
+          previousIds.includes(userId)
+        ) {
+          return previousIds.filter(
+            (id) => id !== userId,
+          );
+        }
+
+        return [...previousIds, userId];
+      },
+    );
+  };
+
+  const handleForwardMessages =
+    async () => {
+      if (
+        selectedMessageIds.length ===
+          0 ||
+        forwardRecipientIds.length ===
+          0
+      ) {
+        return;
       }
 
-      return [...previousIds, userId];
-    });
-  };
+      const currentUserId =
+        sessionStorage.getItem("userId");
 
-  const handleForwardMessages = async () => {
-    if (selectedMessageIds.length === 0 || forwardRecipientIds.length === 0) {
-      return;
-    }
+      const selectedMessages =
+        messages.filter((message) =>
+          selectedMessageIds.includes(
+            message.id,
+          ),
+        );
 
-    const currentUserId = sessionStorage.getItem("userId");
+      const selectedRecipients =
+        users.filter((user) =>
+          forwardRecipientIds.includes(
+            user._id,
+          ),
+        );
 
-    const selectedMessages = messages.filter((message) =>
-      selectedMessageIds.includes(message.id),
-    );
+      if (
+        selectedMessages.length === 0 ||
+        selectedRecipients.length === 0
+      ) {
+        return;
+      }
 
-    const selectedRecipients = users.filter((user) =>
-      forwardRecipientIds.includes(user._id),
-    );
+      setIsForwarding(true);
 
-    if (selectedMessages.length === 0 || selectedRecipients.length === 0) {
-      return;
-    }
+         try {
+                  const baseTime = Date.now();
 
-    setIsForwarding(true);
+        const batchRoot = `forward-${baseTime}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`;
 
-    try {
-      const baseTime = Date.now();
+        selectedRecipients.forEach(
+          (
+            recipient,
+            recipientIndex,
+          ) => {
+            const destinationKey =
+              generateChatKey(
+                currentUserId,
+                recipient._id,
+              );
 
-      const batchRoot = `forward-${baseTime}-${Math.random()
-        .toString(36)
-        .slice(2, 8)}`;
+            selectedMessages.forEach(
+              (
+                sourceMessage,
+                messageIndex,
+              ) => {
+                const plainText =
+                  sourceMessage.text
+                    ? getDecryptedText(
+                        sourceMessage.text,
+                      )
+                    : "";
 
-      selectedRecipients.forEach((recipient, recipientIndex) => {
-        const destinationKey = generateChatKey(currentUserId, recipient._id);
+                const encryptedText =
+                  plainText
+                    ? encryptMessage(
+                        plainText,
+                        destinationKey,
+                      )
+                    : "";
 
-        selectedMessages.forEach((sourceMessage, messageIndex) => {
-          const plainText = sourceMessage.text
-            ? getDecryptedText(sourceMessage.text)
-            : "";
+                const newMessageId = `${Date.now()}-${recipientIndex}-${messageIndex}-${Math.random()
+                  .toString(36)
+                  .slice(2, 8)}`;
 
-          const encryptedText = plainText
-            ? encryptMessage(plainText, destinationKey)
-            : "";
+                const createdAt =
+                  new Date(
+                    baseTime +
+                      recipientIndex *
+                        selectedMessages.length +
+                      messageIndex,
+                  ).toISOString();
 
-          const newMessageId = `${Date.now()}-${recipientIndex}-${messageIndex}-${Math.random()
-            .toString(36)
-            .slice(2, 8)}`;
+                const forwardedMessage = {
+                  id: newMessageId,
+                  messageId: newMessageId,
+                  text: encryptedText,
+                  sender: "me",
+                  senderId: currentUserId,
+                  receiverId:
+                    recipient._id,
+                  createdAt,
+                  status: "sending",
 
-          const createdAt = new Date(
-            baseTime + recipientIndex * selectedMessages.length + messageIndex,
-          ).toISOString();
+                  messageType:
+                    sourceMessage.messageType ||
+                    "text",
 
-          const forwardedMessage = {
-            id: newMessageId,
-            messageId: newMessageId,
-            text: encryptedText,
-            sender: "me",
-            senderId: currentUserId,
-            receiverId: recipient._id,
-            createdAt,
-            status: "sending",
+                  attachmentStoredName:
+                    sourceMessage.attachmentStoredName ||
+                    null,
 
-            messageType: sourceMessage.messageType || "text",
+                  attachmentOriginalName:
+                    sourceMessage.attachmentOriginalName ||
+                    null,
 
-            attachmentStoredName: sourceMessage.attachmentStoredName || null,
+                  attachmentMimeType:
+                    sourceMessage.attachmentMimeType ||
+                    null,
 
-            attachmentOriginalName:
-              sourceMessage.attachmentOriginalName || null,
+                  attachmentSize:
+                    sourceMessage.attachmentSize ||
+                    null,
 
-            attachmentMimeType: sourceMessage.attachmentMimeType || null,
+                  replyToMessageId: null,
+                  replyToText: null,
+                  replyToSenderId: null,
+                  isForwarded: true,
 
-            attachmentSize: sourceMessage.attachmentSize || null,
+                  forwardBatchId: `${batchRoot}-${recipient._id}`,
 
-            replyToMessageId: null,
+                  originalMessageId:
+                    sourceMessage.id,
+                };
 
-            replyToText: null,
-            replyToSenderId: null,
-            isForwarded: true,
+                if (
+                  selectedUser?._id ===
+                  recipient._id
+                ) {
+                  setMessages(
+                    (previousMessages) => [
+                      ...previousMessages,
+                      forwardedMessage,
+                    ],
+                  );
+                }
 
-            forwardBatchId: `${batchRoot}-${recipient._id}`,
+                socket.emit(
+                  "send_message",
+                  forwardedMessage,
+                );
+              },
+            );
+          },
+        );
 
-            originalMessageId: sourceMessage.id,
-          };
+        resetForwardSelection();
+      } catch (error) {
+        console.error(
+          "Forwarding failed:",
+          error,
+        );
 
-          updateFriendActivity(recipient._id, forwardedMessage);
-
-          if (selectedUser?._id === recipient._id) {
-            setMessages((previousMessages) => [
-              ...previousMessages,
-              forwardedMessage,
-            ]);
-          }
-
-          socket.emit("send_message", forwardedMessage);
-        });
-      });
-
-      resetForwardSelection();
-    } catch (error) {
-      console.error("Forwarding failed:", error);
-
-      alert("Failed to forward messages");
-    } finally {
-      setIsForwarding(false);
-    }
-  };
+        alert(
+          "Failed to forward messages",
+        );
+      } finally {
+        setIsForwarding(false);
+      }
+    };
 
   const scrollToMessage = (messageId) => {
-    const messageElement = messageRefs.current[messageId];
+    const messageElement =
+      messageRefs.current[messageId];
 
     if (!messageElement) {
       return;
@@ -1227,68 +1872,417 @@ function Chat() {
     setHighlightedMessageId(messageId);
 
     if (highlightTimeoutRef.current) {
-      clearTimeout(highlightTimeoutRef.current);
+      clearTimeout(
+        highlightTimeoutRef.current,
+      );
     }
 
-    highlightTimeoutRef.current = setTimeout(() => {
-      setHighlightedMessageId((currentId) =>
-        currentId === messageId ? null : currentId,
-      );
-    }, 2000);
+    highlightTimeoutRef.current =
+      setTimeout(() => {
+        setHighlightedMessageId(
+          (currentId) =>
+            currentId === messageId
+              ? null
+              : currentId,
+        );
+      }, 2000);
   };
 
-  const handleSearchResultClick = (messageId) => {
+  const handleSearchResultClick = (
+    messageId,
+  ) => {
     resetForwardSelection();
     scrollToMessage(messageId);
   };
 
-  const sortedFriends = [...users].sort((firstFriend, secondFriend) => {
-    const firstTime = Date.parse(lastMessageTimes[firstFriend._id] || "") || 0;
+  const filteredFriends = users.filter(
+    (user) =>
+      user.username
+        .toLowerCase()
+        .includes(
+          friendSearch
+            .trim()
+            .toLowerCase(),
+        ),
+  );
 
-    const secondTime =
-      Date.parse(lastMessageTimes[secondFriend._id] || "") || 0;
+  const sortedFriends = [
+  ...filteredFriends,
+].sort(
+  (firstFriend, secondFriend) => {
+    const firstMessage =
+      latestMessages[
+        String(firstFriend._id)
+      ];
+
+    const secondMessage =
+      latestMessages[
+        String(secondFriend._id)
+      ];
+
+    const firstTime = firstMessage
+      ?.createdAt
+      ? new Date(
+          firstMessage.createdAt,
+        ).getTime()
+      : 0;
+
+    const secondTime = secondMessage
+      ?.createdAt
+      ? new Date(
+          secondMessage.createdAt,
+        ).getTime()
+      : 0;
 
     return secondTime - firstTime;
-  });
+  },
+);
 
-  const filteredFriends = sortedFriends.filter((user) =>
-    user.username.toLowerCase().includes(friendSearch.trim().toLowerCase()),
-  );
+  const filteredForwardFriends =
+    users.filter((user) =>
+      user.username
+        .toLowerCase()
+        .includes(
+          forwardSearch
+            .trim()
+            .toLowerCase(),
+        ),
+    );
 
-  const filteredForwardFriends = users.filter((user) =>
-    user.username.toLowerCase().includes(forwardSearch.trim().toLowerCase()),
-  );
+  const messageSearchResults =
+    messageSearch.trim()
+      ? messages
+          .map((message) => ({
+            ...message,
 
-  const messageSearchResults = messageSearch.trim()
-    ? messages
-        .map((message) => ({
-          ...message,
+            decryptedText:
+              getMessagePreview(message),
+          }))
+          .filter((message) =>
+            message.decryptedText
+              .toLowerCase()
+              .includes(
+                messageSearch
+                  .trim()
+                  .toLowerCase(),
+              ),
+          )
+      : [];
 
-          decryptedText: getMessagePreview(message),
-        }))
-        .filter((message) =>
-          message.decryptedText
-            .toLowerCase()
-            .includes(messageSearch.trim().toLowerCase()),
-        )
-    : [];
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(
+        longPressTimerRef.current,
+      );
+
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const resetSwipeGesture = () => {
+    clearLongPressTimer();
+
+    touchStartRef.current = null;
+
+    setSwipingMessageId(null);
+    setSwipeOffset(0);
+  };
+
+  const handleMessagePointerDown = (
+    event,
+    message,
+  ) => {
+    if (
+      event.pointerType !== "touch" ||
+      selectionMode
+    ) {
+      return;
+    }
+
+    suppressMessageClickRef.current =
+      false;
+
+    touchStartRef.current = {
+      message,
+      startX: event.clientX,
+      startY: event.clientY,
+      currentX: event.clientX,
+      currentY: event.clientY,
+      moved: false,
+      longPressTriggered: false,
+    };
+
+    clearLongPressTimer();
+
+    longPressTimerRef.current =
+      setTimeout(() => {
+        const gesture =
+          touchStartRef.current;
+
+        if (!gesture || gesture.moved) {
+          return;
+        }
+
+        gesture.longPressTriggered =
+          true;
+
+        suppressMessageClickRef.current =
+          true;
+
+        setMobileActionMessage(message);
+
+        if (navigator.vibrate) {
+          navigator.vibrate(40);
+        }
+      }, 550);
+  };
+
+  const handleMessagePointerMove = (
+    event,
+  ) => {
+    const gesture =
+      touchStartRef.current;
+
+    if (
+      event.pointerType !== "touch" ||
+      !gesture
+    ) {
+      return;
+    }
+
+    gesture.currentX = event.clientX;
+    gesture.currentY = event.clientY;
+
+    const distanceX =
+      event.clientX - gesture.startX;
+
+    const distanceY =
+      event.clientY - gesture.startY;
+
+    if (
+      Math.abs(distanceY) >
+        Math.abs(distanceX) &&
+      Math.abs(distanceY) > 6
+    ) {
+      gesture.moved = true;
+
+      clearLongPressTimer();
+
+      touchStartRef.current = null;
+
+      setSwipingMessageId(null);
+      setSwipeOffset(0);
+
+      return;
+    }
+
+    if (
+      distanceX > 10 &&
+      Math.abs(distanceX) >
+        Math.abs(distanceY)
+    ) {
+      gesture.moved = true;
+
+      clearLongPressTimer();
+
+      suppressMessageClickRef.current =
+        true;
+
+      setSwipingMessageId(
+        gesture.message.id ||
+          gesture.message.messageId,
+      );
+
+      setSwipeOffset(
+        Math.min(distanceX, 90),
+      );
+    }
+  };
+
+  const handleMessagePointerUp = (
+    event,
+    message,
+  ) => {
+    const gesture =
+      touchStartRef.current;
+
+    clearLongPressTimer();
+
+    if (
+      event.pointerType !== "touch" ||
+      !gesture
+    ) {
+      resetSwipeGesture();
+      return;
+    }
+
+    const distanceX =
+      gesture.currentX - gesture.startX;
+
+    const distanceY =
+      gesture.currentY - gesture.startY;
+
+    const shouldReply =
+      distanceX >= 65 &&
+      Math.abs(distanceX) >
+        Math.abs(distanceY) &&
+      !gesture.longPressTriggered;
+
+    if (shouldReply) {
+      suppressMessageClickRef.current =
+        true;
+
+      handleReplyMessage(message);
+
+      if (navigator.vibrate) {
+        navigator.vibrate(30);
+      }
+    }
+
+    resetSwipeGesture();
+
+    window.setTimeout(() => {
+      suppressMessageClickRef.current =
+        false;
+    }, 100);
+  };
+
+  const handleMessagePointerCancel = () => {
+    resetSwipeGesture();
+
+    window.setTimeout(() => {
+      suppressMessageClickRef.current =
+        false;
+    }, 100);
+  };
+
+  const closeMobileActionMenu = () => {
+    setMobileActionMessage(null);
+  };
+
+  const handleMobileReply = () => {
+    if (!mobileActionMessage) {
+      return;
+    }
+
+    handleReplyMessage(
+      mobileActionMessage,
+    );
+
+    closeMobileActionMenu();
+  };
+
+  const handleMobileForward = () => {
+    if (!mobileActionMessage) {
+      return;
+    }
+
+    startForwardSelection(
+      mobileActionMessage.id ||
+        mobileActionMessage.messageId,
+    );
+
+    closeMobileActionMenu();
+  };
+
+  const handleMobileDelete = () => {
+    if (!mobileActionMessage) {
+      return;
+    }
+
+    const messageId =
+      mobileActionMessage.id ||
+      mobileActionMessage.messageId;
+
+    closeMobileActionMenu();
+
+    handleDeleteMessage(messageId);
+  };
+
+  const handleMessagesScroll = () => {
+    const container =
+      messagesContainerRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const distanceFromBottom =
+      container.scrollHeight -
+      container.scrollTop -
+      container.clientHeight;
+
+    const isNearBottom =
+      distanceFromBottom < 120;
+
+    shouldAutoScrollRef.current =
+      isNearBottom;
+
+    if (isNearBottom) {
+      setShowScrollToBottom(false);
+      return;
+    }
+
+    const containerRect =
+      container.getBoundingClientRect();
+
+    let messagesBelowViewport = 0;
+
+    messages.forEach((message) => {
+      const messageId =
+        message.id || message.messageId;
+
+      const element =
+        messageRefs.current[messageId];
+
+      if (!element) {
+        return;
+      }
+
+      if (
+        element.getBoundingClientRect()
+          .bottom > containerRect.bottom
+      ) {
+        messagesBelowViewport += 1;
+      }
+    });
+
+    setShowScrollToBottom(
+      messagesBelowViewport >= 15,
+    );
+  };
+
+  const handleScrollToLatest = () => {
+    shouldAutoScrollRef.current = true;
+
+    setShowScrollToBottom(false);
+
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-slate-950 text-white">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-slate-950 text-white">
       <div className="shrink-0 border-b border-slate-700 bg-slate-900 p-4 text-xl font-bold shadow-md">
         Secure Chat
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <aside
-  className={`${
-    selectedUser ? "hidden md:flex" : "flex"
-  } w-full shrink-0 flex-col border-r border-slate-700 bg-slate-900 md:w-72`}
->
+          className={`${
+            selectedUser
+              ? "hidden md:flex"
+              : "flex"
+          } w-full shrink-0 flex-col border-r border-slate-700 bg-slate-900 md:w-72`}
+        >
           <div className="shrink-0 border-b border-slate-800 bg-slate-950 p-4">
             <div className="mb-3 flex items-center gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-500 text-lg font-bold">
-                {loggedInUsername?.charAt(0).toUpperCase()}
+                {loggedInUsername
+                  ?.charAt(0)
+                  .toUpperCase()}
               </div>
 
               <div className="min-w-0 overflow-hidden">
@@ -1312,15 +2306,23 @@ function Chat() {
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <h2 className="p-4 text-lg font-semibold">Friends</h2>
+            <h2 className="p-4 text-lg font-semibold">
+              Friends
+            </h2>
 
             <div className="border-b border-slate-800 px-4 pb-4">
               <input
                 type="text"
                 value={searchUsername}
-                onChange={(event) => setSearchUsername(event.target.value)}
+                onChange={(event) =>
+                  setSearchUsername(
+                    event.target.value,
+                  )
+                }
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") {
+                  if (
+                    event.key === "Enter"
+                  ) {
                     handleSearchUsers();
                   }
                 }}
@@ -1338,96 +2340,139 @@ function Chat() {
 
               {searchResults.length > 0 && (
                 <div className="mt-3 space-y-2">
-                  {searchResults.map((user) => (
-                    <div
-                      key={user._id}
-                      className="flex items-center justify-between gap-2 rounded-lg bg-slate-800 p-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">
-                          {user.username}
-                        </p>
-
-                        <p className="truncate text-xs text-slate-400">
-                          {user.email}
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleSendRequest(user._id)}
-                        className="shrink-0 rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
+                  {searchResults.map(
+                    (user) => (
+                      <div
+                        key={user._id}
+                        className="flex items-center justify-between gap-2 rounded-lg bg-slate-800 p-3"
                       >
-                        Add
-                      </button>
-                    </div>
-                  ))}
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">
+                            {user.username}
+                          </p>
+
+                          <p className="truncate text-xs text-slate-400">
+                            {user.email}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleSendRequest(
+                              user._id,
+                            )
+                          }
+                          className="shrink-0 rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ),
+                  )}
                 </div>
               )}
             </div>
 
             <div className="border-b border-slate-800 px-4 py-4">
-              <h3 className="mb-3 text-sm font-semibold">Friend Requests</h3>
+              <h3 className="mb-3 text-sm font-semibold">
+                Friend Requests
+              </h3>
 
               {friendRequests.length === 0 ? (
-                <p className="text-xs text-slate-400">No pending requests</p>
+                <p className="text-xs text-slate-400">
+                  No pending requests
+                </p>
               ) : (
-                friendRequests.map((request) => (
-                  <div
-                    key={request._id}
-                    className="mb-2 rounded-lg bg-slate-800 p-3"
-                  >
-                    <p className="text-sm font-medium">
-                      {request.from.username}
-                    </p>
+                friendRequests.map(
+                  (request) => (
+                    <div
+                      key={request._id}
+                      className="mb-2 rounded-lg bg-slate-800 p-3"
+                    >
+                      <p className="text-sm font-medium">
+                        {
+                          request.from
+                            .username
+                        }
+                      </p>
 
-                    <p className="mb-2 text-xs text-slate-400">
-                      {request.from.email}
-                    </p>
+                      <p className="mb-2 text-xs text-slate-400">
+                        {
+                          request.from
+                            .email
+                        }
+                      </p>
 
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleAcceptRequest(request.from._id)}
-                        className="rounded bg-green-500 px-3 py-1 text-xs text-white hover:bg-green-600"
-                      >
-                        Accept
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleAcceptRequest(
+                              request.from
+                                ._id,
+                            )
+                          }
+                          className="rounded bg-green-500 px-3 py-1 text-xs text-white hover:bg-green-600"
+                        >
+                          Accept
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleRejectRequest(request.from._id)}
-                        className="rounded bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600"
-                      >
-                        Reject
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleRejectRequest(
+                              request.from
+                                ._id,
+                            )
+                          }
+                          className="rounded bg-red-500 px-3 py-1 text-xs text-white hover:bg-red-600"
+                        >
+                          Reject
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ),
+                )
               )}
             </div>
 
             <div>
               <div className="p-4">
-                <h3 className="text-sm font-semibold">My Friends</h3>
+                <h3 className="text-sm font-semibold">
+                  My Friends
+                </h3>
               </div>
 
               {users.length === 0 ? (
-                <p className="p-4 text-sm text-slate-400">No friends found</p>
-              ) : filteredFriends.length === 0 ? (
+                <p className="p-4 text-sm text-slate-400">
+                  No friends found
+                </p>
+              ) : filteredFriends.length ===
+                0 ? (
                 <p className="p-4 text-sm text-slate-400">
                   No matching friend found
                 </p>
               ) : (
-                filteredFriends.map((user) => (
+                sortedFriends.map((user) => (
                   <UserCard
                     key={user._id}
                     user={user}
-                    selectedUser={selectedUser}
-                    setSelectedUser={handleSelectFriend}
-                    unreadCount={unreadCounts[user._id] || 0}
-                    lastMessageTime={lastMessageTimes[user._id] || null}
-                    lastMessagePreview={lastMessagePreviews[user._id] || ""}
+                    selectedUser={
+                      selectedUser
+                    }
+                    setSelectedUser={
+                      handleSelectFriend
+                    }
+                    unreadCount={
+                      unreadCounts[
+                        user._id
+                      ] || 0
+                    }
+                    latestMessage={
+  latestMessages[String(user._id)] ||
+  null
+}
                   />
                 ))
               )}
@@ -1436,7 +2481,11 @@ function Chat() {
                 <input
                   type="text"
                   value={friendSearch}
-                  onChange={(event) => setFriendSearch(event.target.value)}
+                  onChange={(event) =>
+                    setFriendSearch(
+                      event.target.value,
+                    )
+                  }
                   placeholder="Search friends..."
                   className="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-green-500"
                 />
@@ -1445,21 +2494,27 @@ function Chat() {
           </div>
         </aside>
 
-<main
-  className={`${
-    selectedUser ? "flex" : "hidden md:flex"
-  } min-h-0 min-w-0 flex-1 flex-col overflow-hidden`}
->          {!selectedUser ? (
+        <main
+          className={`${
+            selectedUser
+              ? "flex"
+              : "hidden md:flex"
+          } relative min-h-0 min-w-0 flex-1 flex-col overflow-hidden`}
+        >
+          {!selectedUser ? (
             <div className="flex flex-1 items-center justify-center bg-gradient-to-b from-slate-950 to-slate-900">
               <div className="px-6 text-center">
-                <div className="mb-4 text-6xl">Secure</div>
+                <div className="mb-4 text-6xl">
+                  Secure
+                </div>
 
                 <h2 className="mb-2 text-3xl font-bold">
                   Welcome to Secure Chat
                 </h2>
 
                 <p className="mb-4 text-slate-400">
-                  Select a friend from the sidebar to start a private
+                  Select a friend from the
+                  sidebar to start a private
                   conversation.
                 </p>
               </div>
@@ -1467,14 +2522,28 @@ function Chat() {
           ) : (
             <>
               <ChatHeader
-                selectedUser={selectedUser.username}
-                onRemoveFriend={handleRemoveFriend}
+                selectedUser={
+                  selectedUser.username
+                }
+                onRemoveFriend={
+                  handleRemoveFriend
+                }
                 onClearChat={handleClearChat}
-                onBack={handleBackToWelcome}
-                messageSearch={messageSearch}
-                onMessageSearchChange={setMessageSearch}
-                searchResults={messageSearchResults}
-                onSearchResultClick={handleSearchResultClick}
+                onBack={
+                  handleBackToWelcome
+                }
+                messageSearch={
+                  messageSearch
+                }
+                onMessageSearchChange={
+                  setMessageSearch
+                }
+                searchResults={
+                  messageSearchResults
+                }
+                onSearchResultClick={
+                  handleSearchResultClick
+                }
               />
 
               {selectionMode && (
@@ -1482,21 +2551,29 @@ function Chat() {
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={resetForwardSelection}
+                      onClick={
+                        resetForwardSelection
+                      }
                       className="rounded-full p-2 text-slate-300 hover:bg-slate-700 hover:text-white"
                     >
                       <FaTimes />
                     </button>
 
                     <p className="font-medium">
-                      {selectedMessageIds.length} selected
+                      {
+                        selectedMessageIds.length
+                      }{" "}
+                      selected
                     </p>
                   </div>
 
                   <button
                     type="button"
                     onClick={openForwardModal}
-                    disabled={selectedMessageIds.length === 0}
+                    disabled={
+                      selectedMessageIds.length ===
+                      0
+                    }
                     className="flex items-center gap-2 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <FaShare />
@@ -1506,232 +2583,400 @@ function Chat() {
               )}
 
               <div
-className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-slate-950 to-slate-900 p-3 sm:p-6"                onClick={() => {
+                ref={messagesContainerRef}
+                onScroll={
+                  handleMessagesScroll
+                }
+                className="relative min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain bg-gradient-to-b from-slate-950 to-slate-900 p-3 sm:p-6"
+                style={{
+                  WebkitOverflowScrolling:
+                    "touch",
+
+                  touchAction: "pan-y",
+                }}
+                onClick={() => {
                   if (!selectionMode) {
-                    setSelectedMessageId(null);
+                    setSelectedMessageId(
+                      null,
+                    );
                   }
                 }}
               >
-                {messages.length === 0 ? (
+                                {messages.length === 0 ? (
                   <div className="mt-10 text-center text-slate-500">
-                    No messages yet. Start the conversation.
+                    No messages yet. Start the
+                    conversation.
                   </div>
                 ) : (
-                  messages.map((message, index) => {
-                    const isSelected = selectedMessageIds.includes(message.id);
+                  messages.map(
+                    (message, index) => {
+                      const isSelected =
+                        selectedMessageIds.includes(
+                          message.id,
+                        );
 
-                    return (
-                      <div
-                        key={message.id || message.messageId || index}
-                        ref={(element) => {
-                          if (element && message.id) {
-                            messageRefs.current[message.id] = element;
-                          }
-                        }}
-                        className={`flex rounded-xl transition-all duration-300 ${
-                          message.sender === "me"
-                            ? "justify-end"
-                            : "justify-start"
-                        } ${
-                          isSelected
-                            ? "bg-blue-500/20 p-2 ring-1 ring-blue-400"
-                            : ""
-                        } ${
-                          highlightedMessageId === message.id
-                            ? "bg-yellow-400/20 p-2 ring-1 ring-yellow-400/40"
-                            : ""
-                        }`}
-                      >
-                        {selectionMode && (
-                          <div className="mr-3 flex items-center">
-                            <div
-                              className={`flex h-6 w-6 items-center justify-center rounded-full border-2 ${
-                                isSelected
-                                  ? "border-blue-400 bg-blue-500"
-                                  : "border-slate-500"
-                              }`}
-                            >
-                              {isSelected && "✓"}
-                            </div>
-                          </div>
-                        )}
-
+                      return (
                         <div
-                          onClick={(event) => {
-                            event.stopPropagation();
+                          key={
+                            message.id ||
+                            message.messageId ||
+                            index
+                          }
+                          ref={(element) => {
+                            const messageId =
+                              message.id ||
+                              message.messageId;
 
-                            if (selectionMode) {
-                              toggleMessageSelection(message.id);
-
+                            if (!messageId) {
                               return;
                             }
 
-                            setSelectedMessageId((currentId) =>
-                              currentId === message.id ? null : message.id,
-                            );
+                            if (element) {
+                              messageRefs.current[
+                                messageId
+                              ] = element;
+                            } else {
+                              delete messageRefs
+                                .current[
+                                messageId
+                              ];
+                            }
                           }}
-                          className="group relative cursor-pointer"
+                          className={`flex rounded-xl transition-all duration-300 ${
+                            message.sender ===
+                            "me"
+                              ? "justify-end"
+                              : "justify-start"
+                          } ${
+                            isSelected
+                              ? "bg-blue-500/20 p-2 ring-1 ring-blue-400"
+                              : ""
+                          } ${
+                            highlightedMessageId ===
+                            message.id
+                              ? "bg-yellow-400/20 p-2 ring-1 ring-yellow-400/40"
+                              : ""
+                          }`}
                         >
-                          <div
-                            className={`max-w-[85vw] break-words sm:max-w-md rounded-2xl px-4 py-3 shadow-lg sm:max-w-md ${
-                              message.sender === "me"
-                                ? "rounded-br-none bg-green-500"
-                                : "rounded-bl-none bg-slate-700"
-                            } ${
-                              selectedMessageId === message.id
-                                ? "ring-2 ring-yellow-400"
-                                : ""
-                            }`}
-                          >
-                            {message.isForwarded && (
-                              <p className="mb-1 flex items-center gap-1 text-[11px] italic text-slate-200">
-                                <FaShare />
-                                Forwarded
-                              </p>
-                            )}
-
-                            {message.replyToMessageId && (
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-
-                                  scrollToMessage(message.replyToMessageId);
-                                }}
-                                className={`mb-2 block w-full rounded-lg border-l-4 p-2 text-left ${
-                                  message.sender === "me"
-                                    ? "border-green-200 bg-green-700/40"
-                                    : "border-slate-400 bg-slate-900/40"
+                          {selectionMode && (
+                            <div className="mr-3 flex items-center">
+                              <div
+                                className={`flex h-6 w-6 items-center justify-center rounded-full border-2 ${
+                                  isSelected
+                                    ? "border-blue-400 bg-blue-500"
+                                    : "border-slate-500"
                                 }`}
                               >
-                                <p className="text-xs font-semibold text-yellow-200">
-                                  {getReplySenderName(message)}
-                                </p>
-
-                                <p className="mt-1 truncate text-xs text-slate-100">
-                                  {message.replyToText
-                                    ? getDecryptedText(message.replyToText)
-                                    : "Original message"}
-                                </p>
-                              </button>
-                            )}
-
-                            {message.messageType !== "text" &&
-                              message.status === "sending" && (
-                                <div className="mb-2 rounded-lg bg-black/20 p-4 text-sm text-slate-100">
-                                  Sending attachment...
-                                </div>
-                              )}
-
-                            {message.messageType !== "text" &&
-                              message.status === "failed" && (
-                                <div className="mb-2 rounded-lg bg-black/20 p-4 text-sm text-red-200">
-                                  Attachment failed to send
-                                </div>
-                              )}
-
-                            {message.messageType !== "text" &&
-                              message.status !== "sending" &&
-                              message.status !== "failed" && (
-                                <AttachmentMessage message={message} />
-                              )}
-
-                            {message.text && (
-                              <p className="whitespace-pre-wrap">
-                                {getDecryptedText(message.text)}
-                              </p>
-                            )}
-
-                            <p
-                              className={`mt-1 text-[10px] ${
-                                message.sender === "me"
-                                  ? "text-green-100"
-                                  : "text-slate-300"
-                              }`}
-                            >
-                              {message.createdAt
-                                ? new Date(message.createdAt).toLocaleString(
-                                    [],
-                                    {
-                                      day: "2-digit",
-                                      month: "short",
-                                      year: "numeric",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    },
-                                  )
-                                : ""}
-                            </p>
-                          </div>
-
-                          {message.sender === "me" && (
-                            <div
-                              className={`absolute -bottom-6 right-0 hidden whitespace-nowrap text-[11px] group-hover:block ${
-                                message.status === "failed"
-                                  ? "text-red-400"
-                                  : "text-slate-400"
-                              }`}
-                            >
-                              {getStatusText(message.status)}
+                                {isSelected &&
+                                  "✓"}
+                              </div>
                             </div>
                           )}
 
-                          {!selectionMode &&
-                            selectedMessageId === message.id && (
-                              <div
-                                className={`absolute top-0 z-20 flex gap-1 ${
-                                  message.sender === "me"
-                                    ? "-left-56"
-                                    : "-right-56"
+                          <div
+                            onPointerDown={(
+                              event,
+                            ) =>
+                              handleMessagePointerDown(
+                                event,
+                                message,
+                              )
+                            }
+                            onPointerMove={
+                              handleMessagePointerMove
+                            }
+                            onPointerUp={(
+                              event,
+                            ) =>
+                              handleMessagePointerUp(
+                                event,
+                                message,
+                              )
+                            }
+                            onPointerCancel={
+                              handleMessagePointerCancel
+                            }
+                            onClick={(event) => {
+                              event.stopPropagation();
+
+                              if (
+                                suppressMessageClickRef.current
+                              ) {
+                                return;
+                              }
+
+                              if (
+                                selectionMode
+                              ) {
+                                toggleMessageSelection(
+                                  message.id ||
+                                    message.messageId,
+                                );
+
+                                return;
+                              }
+
+                              if (
+                                window.matchMedia(
+                                  "(min-width: 768px)",
+                                ).matches
+                              ) {
+                                setSelectedMessageId(
+                                  (currentId) =>
+                                    currentId ===
+                                    (message.id ||
+                                      message.messageId)
+                                      ? null
+                                      : message.id ||
+                                        message.messageId,
+                                );
+                              }
+                            }}
+                            style={{
+                              transform:
+                                swipingMessageId ===
+                                (message.id ||
+                                  message.messageId)
+                                  ? `translateX(${swipeOffset}px)`
+                                  : "translateX(0px)",
+
+                              touchAction:
+                                "pan-y",
+                            }}
+                            className="group relative cursor-pointer transition-transform duration-150"
+                          >
+                            {swipingMessageId ===
+                              (message.id ||
+                                message.messageId) &&
+                              swipeOffset > 10 && (
+                                <div className="pointer-events-none absolute left-[-44px] top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-blue-500 text-white md:hidden">
+                                  <FaReply />
+                                </div>
+                              )}
+
+                            <div
+                              className={`max-w-[82vw] break-words rounded-2xl px-4 py-3 shadow-lg sm:max-w-md ${
+                                message.sender ===
+                                "me"
+                                  ? "rounded-br-none bg-green-500"
+                                  : "rounded-bl-none bg-slate-700"
+                              } ${
+                                selectedMessageId ===
+                                message.id
+                                  ? "ring-2 ring-yellow-400"
+                                  : ""
+                              }`}
+                            >
+                              {message.isForwarded && (
+                                <p className="mb-1 flex items-center gap-1 text-[11px] italic text-slate-200">
+                                  <FaShare />
+                                  Forwarded
+                                </p>
+                              )}
+
+                              {message.replyToMessageId && (
+                                <button
+                                  type="button"
+                                  onClick={(
+                                    event,
+                                  ) => {
+                                    event.stopPropagation();
+
+                                    scrollToMessage(
+                                      message.replyToMessageId,
+                                    );
+                                  }}
+                                  className={`mb-2 block w-full rounded-lg border-l-4 p-2 text-left ${
+                                    message.sender ===
+                                    "me"
+                                      ? "border-green-200 bg-green-700/40"
+                                      : "border-slate-400 bg-slate-900/40"
+                                  }`}
+                                >
+                                  <p className="text-xs font-semibold text-yellow-200">
+                                    {getReplySenderName(
+                                      message,
+                                    )}
+                                  </p>
+
+                                  <p className="mt-1 truncate text-xs text-slate-100">
+                                    {message.replyToText
+                                      ? getDecryptedText(
+                                          message.replyToText,
+                                        )
+                                      : "Original message"}
+                                  </p>
+                                </button>
+                              )}
+
+                              {message.messageType !==
+                                "text" &&
+                                message.status ===
+                                  "sending" && (
+                                  <div className="mb-2 rounded-lg bg-black/20 p-4 text-sm text-slate-100">
+                                    Sending attachment...
+                                  </div>
+                                )}
+
+                              {message.messageType !==
+                                "text" &&
+                                message.status ===
+                                  "failed" && (
+                                  <div className="mb-2 rounded-lg bg-black/20 p-4 text-sm text-red-200">
+                                    Attachment failed to
+                                    send
+                                  </div>
+                                )}
+
+                              {message.messageType !==
+                                "text" &&
+                                message.status !==
+                                  "sending" &&
+                                message.status !==
+                                  "failed" && (
+                                  <AttachmentMessage
+                                    message={message}
+                                  />
+                                )}
+
+                              {message.text && (
+                                <p className="whitespace-pre-wrap">
+                                  {getDecryptedText(
+                                    message.text,
+                                  )}
+                                </p>
+                              )}
+
+                              <p
+                                className={`mt-1 text-[10px] ${
+                                  message.sender ===
+                                  "me"
+                                    ? "text-green-100"
+                                    : "text-slate-300"
                                 }`}
                               >
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
+                                {message.createdAt
+                                  ? new Date(
+                                      message.createdAt,
+                                    ).toLocaleString(
+                                      [],
+                                      {
+                                        day: "2-digit",
+                                        month:
+                                          "short",
+                                        year:
+                                          "numeric",
+                                        hour:
+                                          "2-digit",
+                                        minute:
+                                          "2-digit",
+                                      },
+                                    )
+                                  : ""}
+                              </p>
+                            </div>
 
-                                    handleReplyMessage(message);
-                                  }}
-                                  className="flex items-center gap-1 rounded bg-blue-500 px-2 py-1 text-xs text-white hover:bg-blue-600"
-                                >
-                                  <FaReply />
-                                  Reply
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-
-                                    startForwardSelection(message.id);
-                                  }}
-                                  className="flex items-center gap-1 rounded bg-purple-500 px-2 py-1 text-xs text-white hover:bg-purple-600"
-                                >
-                                  <FaShare />
-                                  Forward
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-
-                                    handleDeleteMessage(message.id);
-                                  }}
-                                  className="rounded bg-red-500 px-2 py-1 text-xs text-white hover:bg-red-600"
-                                >
-                                  Delete
-                                </button>
+                            {message.sender ===
+                              "me" && (
+                              <div
+                                className={`absolute -bottom-6 right-0 hidden whitespace-nowrap text-[11px] group-hover:block ${
+                                  message.status ===
+                                  "failed"
+                                    ? "text-red-400"
+                                    : "text-slate-400"
+                                }`}
+                              >
+                                {getStatusText(
+                                  message.status,
+                                )}
                               </div>
                             )}
+
+                            {!selectionMode &&
+                              selectedMessageId ===
+                                message.id && (
+                                <div
+                                  className={`absolute top-0 z-20 hidden gap-1 md:flex ${
+                                    message.sender ===
+                                    "me"
+                                      ? "-left-56"
+                                      : "-right-56"
+                                  }`}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={(
+                                      event,
+                                    ) => {
+                                      event.stopPropagation();
+
+                                      handleReplyMessage(
+                                        message,
+                                      );
+                                    }}
+                                    className="flex items-center gap-1 rounded bg-blue-500 px-2 py-1 text-xs text-white hover:bg-blue-600"
+                                  >
+                                    <FaReply />
+                                    Reply
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={(
+                                      event,
+                                    ) => {
+                                      event.stopPropagation();
+
+                                      startForwardSelection(
+                                        message.id,
+                                      );
+                                    }}
+                                    className="flex items-center gap-1 rounded bg-purple-500 px-2 py-1 text-xs text-white hover:bg-purple-600"
+                                  >
+                                    <FaShare />
+                                    Forward
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={(
+                                      event,
+                                    ) => {
+                                      event.stopPropagation();
+
+                                      handleDeleteMessage(
+                                        message.id,
+                                      );
+                                    }}
+                                    className="rounded bg-red-500 px-2 py-1 text-xs text-white hover:bg-red-600"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })
+                      );
+                    },
+                  )
                 )}
 
                 <div ref={messagesEndRef} />
               </div>
+
+              {showScrollToBottom && (
+                <button
+                  type="button"
+                  onClick={
+                    handleScrollToLatest
+                  }
+                  className="absolute bottom-24 right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-slate-700 text-white shadow-xl transition hover:bg-slate-600 active:scale-95 sm:right-6"
+                  aria-label="Go to latest message"
+                  title="Go to latest message"
+                >
+                  <FaArrowDown />
+                </button>
+              )}
 
               {typingUser && (
                 <div className="shrink-0 border-t border-slate-800 bg-slate-900 px-6 py-2 text-sm text-green-400">
@@ -1744,19 +2989,24 @@ className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-slate-
                   <div className="min-w-0 border-l-4 border-blue-500 pl-3">
                     <p className="text-xs font-semibold text-blue-400">
                       Replying to{" "}
-                      {replyingTo.sender === "me"
+                      {replyingTo.sender ===
+                      "me"
                         ? "yourself"
                         : selectedUser.username}
                     </p>
 
                     <p className="max-w-xl truncate text-sm text-slate-300">
-                      {replyingTo.decryptedText}
+                      {
+                        replyingTo.decryptedText
+                      }
                     </p>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => setReplyingTo(null)}
+                    onClick={() =>
+                      setReplyingTo(null)
+                    }
                     className="ml-4 shrink-0 rounded-full p-2 text-slate-400 hover:bg-slate-700 hover:text-white"
                   >
                     <FaTimes />
@@ -1767,9 +3017,13 @@ className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-slate-
               {isUploading && (
                 <div className="shrink-0 border-t border-slate-800 bg-slate-900 px-4 py-3">
                   <div className="mb-2 flex items-center justify-between text-xs text-slate-300">
-                    <span>Uploading attachment</span>
+                    <span>
+                      Uploading attachment
+                    </span>
 
-                    <span>{uploadProgress}%</span>
+                    <span>
+                      {uploadProgress}%
+                    </span>
                   </div>
 
                   <div className="h-2 overflow-hidden rounded-full bg-slate-700">
@@ -1783,18 +3037,26 @@ className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-slate-
                 </div>
               )}
 
-<div className="flex shrink-0 gap-2 border-t border-slate-800 bg-slate-900 p-2 sm:gap-3 sm:p-4">                <input
+              <div className="flex shrink-0 gap-3 border-t border-slate-800 bg-slate-900 p-4">
+                <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.txt,.docx,.xlsx,.pptx"
-                  onChange={handleAttachmentSelect}
+                  accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                  onChange={
+                    handleAttachmentSelect
+                  }
                   className="hidden"
                 />
 
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={selectionMode || isUploading}
+                  onClick={() =>
+                    fileInputRef.current?.click()
+                  }
+                  disabled={
+                    selectionMode ||
+                    isUploading
+                  }
                   className="rounded-xl bg-slate-800 px-4 py-3 text-slate-200 transition hover:bg-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                   title="Attach image or file"
                 >
@@ -1806,9 +3068,14 @@ className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-slate-
                   value={input}
                   onChange={handleTyping}
                   disabled={selectionMode}
-                  onFocus={() => setSelectedMessageId(null)}
+                  onFocus={() =>
+                    setSelectedMessageId(null)
+                  }
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey
+                    ) {
                       event.preventDefault();
                       sendMessage();
                     }
@@ -1824,8 +3091,12 @@ className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-slate-
                 <button
                   type="button"
                   onClick={sendMessage}
-                  disabled={!input.trim() || selectionMode}
-className="rounded-xl bg-green-500 px-4 py-3 font-medium transition hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50 sm:px-6"                >
+                  disabled={
+                    !input.trim() ||
+                    selectionMode
+                  }
+                  className="rounded-xl bg-green-500 px-6 py-3 font-medium transition hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
                   Send
                 </button>
               </div>
@@ -1837,24 +3108,35 @@ className="rounded-xl bg-green-500 px-4 py-3 font-medium transition hover:bg-gre
       {showForwardModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-          onClick={() => setShowForwardModal(false)}
+          onClick={() =>
+            setShowForwardModal(false)
+          }
         >
           <div
             className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
+            onClick={(event) =>
+              event.stopPropagation()
+            }
           >
             <div className="flex items-center justify-between border-b border-slate-700 p-4">
               <div>
-                <h2 className="text-lg font-semibold">Forward messages</h2>
+                <h2 className="text-lg font-semibold">
+                  Forward messages
+                </h2>
 
                 <p className="text-xs text-slate-400">
-                  {selectedMessageIds.length} message(s) selected
+                  {
+                    selectedMessageIds.length
+                  }{" "}
+                  message(s) selected
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setShowForwardModal(false)}
+                onClick={() =>
+                  setShowForwardModal(false)
+                }
                 className="rounded-full p-2 text-slate-400 hover:bg-slate-800 hover:text-white"
               >
                 <FaTimes />
@@ -1865,79 +3147,188 @@ className="rounded-xl bg-green-500 px-4 py-3 font-medium transition hover:bg-gre
               <input
                 type="text"
                 value={forwardSearch}
-                onChange={(event) => setForwardSearch(event.target.value)}
+                onChange={(event) =>
+                  setForwardSearch(
+                    event.target.value,
+                  )
+                }
                 placeholder="Search friends..."
                 className="w-full rounded-lg bg-slate-800 px-4 py-2 text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
-              {filteredForwardFriends.length === 0 ? (
+              {filteredForwardFriends.length ===
+              0 ? (
                 <p className="p-6 text-center text-sm text-slate-400">
                   No friends found
                 </p>
               ) : (
-                filteredForwardFriends.map((friend) => {
-                  const isRecipientSelected = forwardRecipientIds.includes(
-                    friend._id,
-                  );
+                filteredForwardFriends.map(
+                  (friend) => {
+                    const isRecipientSelected =
+                      forwardRecipientIds.includes(
+                        friend._id,
+                      );
 
-                  return (
-                    <button
-                      type="button"
-                      key={friend._id}
-                      onClick={() => toggleForwardRecipient(friend._id)}
-                      className={`mb-2 flex w-full items-center justify-between rounded-xl p-3 text-left transition ${
-                        isRecipientSelected
-                          ? "bg-blue-500/20 ring-1 ring-blue-400"
-                          : "bg-slate-800 hover:bg-slate-700"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-500 font-bold">
-                          {friend.username?.charAt(0).toUpperCase()}
-                        </div>
-
-                        <div>
-                          <p className="font-medium">{friend.username}</p>
-
-                          <p className="text-xs text-slate-400">
-                            {friend.email}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div
-                        className={`flex h-6 w-6 items-center justify-center rounded-full border-2 ${
+                    return (
+                      <button
+                        type="button"
+                        key={friend._id}
+                        onClick={() =>
+                          toggleForwardRecipient(
+                            friend._id,
+                          )
+                        }
+                        className={`mb-2 flex w-full items-center justify-between rounded-xl p-3 text-left transition ${
                           isRecipientSelected
-                            ? "border-blue-400 bg-blue-500"
-                            : "border-slate-500"
+                            ? "bg-blue-500/20 ring-1 ring-blue-400"
+                            : "bg-slate-800 hover:bg-slate-700"
                         }`}
                       >
-                        {isRecipientSelected && "✓"}
-                      </div>
-                    </button>
-                  );
-                })
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-500 font-bold">
+                            {friend.username
+                              ?.charAt(0)
+                              .toUpperCase()}
+                          </div>
+
+                          <div>
+                            <p className="font-medium">
+                              {
+                                friend.username
+                              }
+                            </p>
+
+                            <p className="text-xs text-slate-400">
+                              {friend.email}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div
+                          className={`flex h-6 w-6 items-center justify-center rounded-full border-2 ${
+                            isRecipientSelected
+                              ? "border-blue-400 bg-blue-500"
+                              : "border-slate-500"
+                          }`}
+                        >
+                          {isRecipientSelected &&
+                            "✓"}
+                        </div>
+                      </button>
+                    );
+                  },
+                )
               )}
             </div>
 
             <div className="flex items-center justify-between border-t border-slate-700 p-4">
               <p className="text-sm text-slate-400">
-                {forwardRecipientIds.length} recipient(s)
+                {forwardRecipientIds.length}{" "}
+                recipient(s)
               </p>
 
               <button
                 type="button"
-                onClick={handleForwardMessages}
-                disabled={forwardRecipientIds.length === 0 || isForwarding}
+                onClick={
+                  handleForwardMessages
+                }
+                disabled={
+                  forwardRecipientIds.length ===
+                    0 || isForwarding
+                }
                 className="flex items-center gap-2 rounded-lg bg-blue-500 px-5 py-2 font-medium hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <FaShare />
 
-                {isForwarding ? "Forwarding..." : "Forward"}
+                {isForwarding
+                  ? "Forwarding..."
+                  : "Forward"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {mobileActionMessage && (
+        <div
+          className="fixed inset-0 z-[100] flex items-end bg-black/60 md:hidden"
+          onClick={
+            closeMobileActionMenu
+          }
+        >
+          <div
+            className="w-full rounded-t-3xl border-t border-slate-700 bg-slate-900 px-4 pb-6 pt-3 shadow-2xl"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-600" />
+
+            <div className="mb-3 rounded-xl bg-slate-800 p-3">
+              <p className="line-clamp-3 break-words text-sm text-slate-300">
+                {getMessagePreview(
+                  mobileActionMessage,
+                ) || "Attachment"}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleMobileReply}
+              className="flex w-full items-center gap-4 border-b border-slate-700 px-3 py-4 text-left text-white active:bg-slate-800"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/20 text-blue-400">
+                <FaReply />
+              </span>
+
+              <span className="font-medium">
+                Reply
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                handleMobileForward
+              }
+              className="flex w-full items-center gap-4 border-b border-slate-700 px-3 py-4 text-left text-white active:bg-slate-800"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-500/20 text-purple-400">
+                <FaShare />
+              </span>
+
+              <span className="font-medium">
+                Forward
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                handleMobileDelete
+              }
+              className="flex w-full items-center gap-4 px-3 py-4 text-left text-red-400 active:bg-slate-800"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-red-500/20">
+                <FaTrash />
+              </span>
+
+              <span className="font-medium">
+                Delete
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={
+                closeMobileActionMenu
+              }
+              className="mt-3 w-full rounded-xl bg-slate-800 py-3 font-medium text-slate-300 active:bg-slate-700"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
@@ -1946,3 +3337,6 @@ className="rounded-xl bg-green-500 px-4 py-3 font-medium transition hover:bg-gre
 }
 
 export default Chat;
+            
+
+            
